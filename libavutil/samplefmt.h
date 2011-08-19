@@ -31,6 +31,7 @@ enum AVSampleFormat {
     AV_SAMPLE_FMT_S32,         ///< signed 32 bits
     AV_SAMPLE_FMT_FLT,         ///< float
     AV_SAMPLE_FMT_DBL,         ///< double
+    AV_SAMPLE_FMT_AES,         ///< aes raw frame
     AV_SAMPLE_FMT_NB           ///< Number of sample formats. DO NOT USE if linking dynamically
 };
 
