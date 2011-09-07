@@ -1243,6 +1243,7 @@ int ff_parse_mpeg2_descriptor(AVFormatContext *fc, AVStream *st, int stream_type
     int desc_len, desc_tag, desc_es_id;
     char language[252];
     int i;
+    uint8_t tmp;
 
     desc_tag = get8(pp, desc_list_end);
     if (desc_tag < 0)
@@ -1298,6 +1299,10 @@ int ff_parse_mpeg2_descriptor(AVFormatContext *fc, AVStream *st, int stream_type
         language[2] = get8(pp, desc_end);
         language[3] = 0;
         av_dict_set(&st->metadata, "language", language, 0);
+        tmp = get8(pp, desc_end);
+        st->codec->dvb_teletext_type = tmp >> 3;
+        st->codec->dvb_teletext_magazine_number = tmp & 0x7;
+        st->codec->dvb_teletext_page_number = get8(pp, desc_end);
         break;
     case 0x59: /* subtitling descriptor */
         language[0] = get8(pp, desc_end);
@@ -1305,7 +1310,8 @@ int ff_parse_mpeg2_descriptor(AVFormatContext *fc, AVStream *st, int stream_type
         language[2] = get8(pp, desc_end);
         language[3] = 0;
         /* hearing impaired subtitles detection */
-        switch(get8(pp, desc_end)) {
+        st->codec->dvb_subtitling_type = get8(pp, desc_end);
+        switch(st->codec->dvb_subtitling_type) {
         case 0x20: /* DVB subtitles (for the hard of hearing) with no monitor aspect ratio criticality */
         case 0x21: /* DVB subtitles (for the hard of hearing) for display on 4:3 aspect ratio monitor */
         case 0x22: /* DVB subtitles (for the hard of hearing) for display on 16:9 aspect ratio monitor */
@@ -1343,6 +1349,12 @@ int ff_parse_mpeg2_descriptor(AVFormatContext *fc, AVStream *st, int stream_type
         if (i) {
             language[i - 1] = 0;
             av_dict_set(&st->metadata, "language", language, 0);
+        }
+        break;
+    case 0x7c: /* AAC descriptor */
+        st->codec->aac_profile_and_level = get8(pp, desc_end);
+        if (desc_len > 1 && (get8(pp, desc_end) >> 7)) {
+            st->codec->aac_type = get8(pp, desc_end);
         }
         break;
     case 0x05: /* registration descriptor */
