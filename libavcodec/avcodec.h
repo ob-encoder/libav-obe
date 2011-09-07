@@ -2945,6 +2945,62 @@ typedef struct AVCodecContext {
 #define AV_EF_BITSTREAM (1<<1)
 #define AV_EF_BUFFER    (1<<2)
 #define AV_EF_EXPLODE   (1<<3)
+
+    /**
+     * DVB Subtitling Type
+     *
+     * - encoding: unused
+     * - decoding: Set by libavcodec.
+     */
+    int dvb_subtitling_type;
+
+    /**
+     * DVB Teletext Type
+     *
+     * - encoding: unused
+     * - decoding: Set by libavcodec.
+     */
+    int dvb_teletext_type;
+
+    /**
+     * DVB Teletext Magazine Number
+     *
+     * - encoding: unused
+     * - decoding: Set by libavcodec.
+     */
+    int dvb_teletext_magazine_number;
+
+    /**
+     * DVB Teletext Page Number
+     *
+     * - encoding: unused
+     * - decoding: Set by libavcodec.
+     */
+    int dvb_teletext_page_number;
+
+    /**
+     * AAC Profile and Level in descriptor
+     *
+     * - encoding: unused
+     * - decoding: Set by libavcodec.
+     */
+    int aac_profile_and_level;
+
+    /**
+     * AAC Type in descriptor
+     *
+     * - encoding: unused
+     * - decoding: Set by libavcodec.
+     */
+    int aac_type;
+
+    /**
+     * H264 fixed frame rate flag
+     *
+     * - encoding: unused
+     * - decoding: Set by libavcodec.
+     */
+    int h264_fixed_frame_rate;
 } AVCodecContext;
 
 /**
