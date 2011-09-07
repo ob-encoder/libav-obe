@@ -785,13 +785,8 @@ static int mpegts_push_data(MpegTSFilter *filter,
                         goto skip;
 
                     /* stream not present in PMT */
-                    if (!pes->st) {
-                        pes->st = avformat_new_stream(ts->stream, NULL);
-                        if (!pes->st)
-                            return AVERROR(ENOMEM);
-                        pes->st->id = pes->pid;
-                        mpegts_set_stream_info(pes->st, pes, 0, 0);
-                    }
+                    if (!pes->st)
+                        goto skip;
 
                     pes->total_size = AV_RB16(pes->header + 4);
                     /* NOTE: a zero total size means the PES size is
