@@ -333,7 +333,7 @@ attribute_deprecated int url_fdopen(AVIOContext **s, URLContext *h);
 attribute_deprecated int url_feof(AVIOContext *s);
 attribute_deprecated int url_ferror(AVIOContext *s);
 
-attribute_deprecated int udp_set_remote_url(URLContext *h, const char *uri);
+//attribute_deprecated int udp_set_remote_url(URLContext *h, const char *uri);
 attribute_deprecated int udp_get_local_port(URLContext *h);
 
 attribute_deprecated void init_checksum(AVIOContext *s,
