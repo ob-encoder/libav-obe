@@ -2418,6 +2418,9 @@ static int swScale(SwsContext *c, const uint8_t* src[],
                                             lastLumSrcY, lastChrSrcY);
         }
 
+        //Disable luma horizontal scaling for OBE until swscale is fixed
+        const uint8_t *lum_src= src[0]+(lastInLumBuf + 1 - srcSliceY)*srcStride[0];
+#if 0
         //Do horizontal scaling
         while(lastInLumBuf < lastLumSrcY) {
             const uint8_t *src1= src[0]+(lastInLumBuf + 1 - srcSliceY)*srcStride[0];
@@ -2439,6 +2442,7 @@ static int swScale(SwsContext *c, const uint8_t* src[],
             DEBUG_BUFFERS("\t\tlumBufIndex %d: lastInLumBuf: %d\n",
                                lumBufIndex,    lastInLumBuf);
         }
+#endif
         while(lastInChrBuf < lastChrSrcY) {
             const uint8_t *src1= src[1]+(lastInChrBuf + 1 - chrSrcSliceY)*srcStride[1];
             const uint8_t *src2= src[2]+(lastInChrBuf + 1 - chrSrcSliceY)*srcStride[2];
@@ -2483,13 +2487,16 @@ static int swScale(SwsContext *c, const uint8_t* src[],
             const int16_t **alpSrcPtr= (CONFIG_SWSCALE_ALPHA && alpPixBuf) ? (const int16_t **) alpPixBuf + lumBufIndex + firstLumSrcY - lastInLumBuf + vLumBufSize : NULL;
             if (isPlanarYUV(dstFormat) || dstFormat==PIX_FMT_GRAY8) { //YV12 like
                 const int chrSkipMask= (1<<c->chrDstVSubSample)-1;
-
+#if 0
                 if (vLumFilterSize == 1) {
                     yuv2plane1(lumSrcPtr[0], dest[0], dstW, c->lumDither8, 0);
                 } else {
                     yuv2planeX(vLumFilter + dstY * vLumFilterSize, vLumFilterSize,
                                lumSrcPtr, dest[0], dstW, c->lumDither8, 0);
                 }
+#endif
+                //temporary fix for OBE codepaths
+                memcpy(dest[0], lum_src, dstW*sizeof(uint16_t));
 
                 if (!((dstY&chrSkipMask) || isGray(dstFormat))) {
                     if (yuv2nv12cX) {
