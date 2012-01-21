@@ -2468,6 +2468,7 @@ static int swScale(SwsContext *c, const uint8_t* src[],
         const int firstLumSrcY= vLumFilterPos[dstY]; //First line needed as input
         const int firstLumSrcY2= vLumFilterPos[FFMIN(dstY | ((1<<c->chrDstVSubSample) - 1), dstH-1)];
         const int firstChrSrcY= vChrFilterPos[chrDstY]; //First line needed as input
+        const uint8_t *lum_src;
 
         // Last line needed as input
         int lastLumSrcY  = FFMIN(c->srcH,    firstLumSrcY  + vLumFilterSize) - 1;
@@ -2498,7 +2499,7 @@ static int swScale(SwsContext *c, const uint8_t* src[],
         }
 
         //Disable luma horizontal scaling for OBE until swscale is fixed
-        const uint8_t *lum_src= src[0]+(lastInLumBuf + 1 - srcSliceY)*srcStride[0];
+        lum_src= src[0]+(lastInLumBuf + 1 - srcSliceY)*srcStride[0];
 #if 0
         //Do horizontal scaling
         while(lastInLumBuf < lastLumSrcY) {
