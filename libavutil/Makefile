@@ -17,6 +17,7 @@ HEADERS = adler32.h                                                     \
           fifo.h                                                        \
           file.h                                                        \
           imgutils.h                                                    \
+          intfloat.h                                                    \
           intfloat_readwrite.h                                          \
           intreadwrite.h                                                \
           lfg.h                                                         \
@@ -75,11 +76,11 @@ OBJS-$(ARCH_ARM) += arm/cpu.o
 OBJS-$(ARCH_PPC) += ppc/cpu.o
 OBJS-$(ARCH_X86) += x86/cpu.o
 
-TESTPROGS = adler32 aes avstring base64 cpu crc des eval file fifo lfg lls \
+TESTPROGS = adler32 aes avstring base64 cpu crc des eval fifo lfg lls \
             md5 opt parseutils rational sha tree
 TESTPROGS-$(HAVE_LZO1X_999_COMPRESS) += lzo
 
-DIRS = arm bfin sh4 x86
+DIRS = arm avr32 bfin mips ppc sh4 tomi x86
 
 ARCH_HEADERS = bswap.h intmath.h intreadwrite.h timer.h
 

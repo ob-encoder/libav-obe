@@ -159,7 +159,7 @@ static void r3d_read_reos(AVFormatContext *s)
     avio_skip(s->pb, 6*4);
 }
 
-static int r3d_read_header(AVFormatContext *s, AVFormatParameters *ap)
+static int r3d_read_header(AVFormatContext *s)
 {
     R3DContext *r3d = s->priv_data;
     Atom atom;
@@ -366,7 +366,8 @@ static int r3d_seek(AVFormatContext *s, int stream_index, int64_t sample_time, i
             frame_num, sample_time);
 
     if (frame_num < r3d->video_offsets_count) {
-        avio_seek(s->pb, r3d->video_offsets_count, SEEK_SET);
+        if (avio_seek(s->pb, r3d->video_offsets_count, SEEK_SET) < 0)
+            return -1;
     } else {
         av_log(s, AV_LOG_ERROR, "could not seek to frame %d\n", frame_num);
         return -1;

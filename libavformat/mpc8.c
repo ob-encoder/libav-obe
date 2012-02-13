@@ -188,7 +188,7 @@ static void mpc8_handle_chunk(AVFormatContext *s, int tag, int64_t chunk_pos, in
     }
 }
 
-static int mpc8_read_header(AVFormatContext *s, AVFormatParameters *ap)
+static int mpc8_read_header(AVFormatContext *s)
 {
     MPCContext *c = s->priv_data;
     AVIOContext *pb = s->pb;
@@ -275,7 +275,8 @@ static int mpc8_read_seek(AVFormatContext *s, int stream_index, int64_t timestam
     int index = av_index_search_timestamp(st, timestamp, flags);
 
     if(index < 0) return -1;
-    avio_seek(s->pb, st->index_entries[index].pos, SEEK_SET);
+    if (avio_seek(s->pb, st->index_entries[index].pos, SEEK_SET) < 0)
+        return -1;
     c->frame = st->index_entries[index].timestamp;
     return 0;
 }

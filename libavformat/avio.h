@@ -66,7 +66,6 @@ typedef struct {
  *       function pointers specified in avio_alloc_context()
  */
 typedef struct {
-#if !FF_API_OLD_AVIO
     /**
      * A class for private options.
      *
@@ -80,7 +79,6 @@ typedef struct {
      * to any av_opt_* functions in that case.
      */
     AVClass *av_class;
-#endif
     unsigned char *buffer;  /**< Start of the buffer. */
     int buffer_size;        /**< Maximum buffer size */
     unsigned char *buf_ptr; /**< Current position in the buffer */
@@ -97,9 +95,6 @@ typedef struct {
     int must_flush;         /**< true if the next seek should flush */
     int eof_reached;        /**< true if eof reached */
     int write_flag;         /**< true if open for writing */
-#if FF_API_OLD_AVIO
-    attribute_deprecated int is_streamed;
-#endif
     int max_packet_size;
     unsigned long checksum;
     unsigned char *checksum_ptr;
@@ -393,18 +388,6 @@ attribute_deprecated int url_exist(const char *url);
  * checked resource.
  */
 int avio_check(const char *url, int flags);
-
-#if FF_API_OLD_INTERRUPT_CB
-/**
- * The callback is called in blocking functions to test regulary if
- * asynchronous interruption is needed. AVERROR_EXIT is returned
- * in this case by the interrupted function. 'NULL' means no interrupt
- * callback is given.
- * @deprecated Use interrupt_callback in AVFormatContext/avio_open2
- *             instead.
- */
-attribute_deprecated void avio_set_interrupt_cb(int (*interrupt_cb)(void));
-#endif
 
 /**
  * Allocate and initialize an AVIOContext for buffered I/O. It must be later

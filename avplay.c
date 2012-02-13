@@ -1527,7 +1527,7 @@ static int input_get_buffer(AVCodecContext *codec, AVFrame *pic)
     AVFilterContext *ctx = codec->opaque;
     AVFilterBufferRef  *ref;
     int perms = AV_PERM_WRITE;
-    int i, w, h, stride[4];
+    int i, w, h, stride[AV_NUM_DATA_POINTERS];
     unsigned edge;
     int pixel_size;
 
@@ -2114,8 +2114,10 @@ static int audio_decode_frame(VideoState *is, double *pts_ptr)
         if ((new_packet = packet_queue_get(&is->audioq, pkt, 1)) < 0)
             return -1;
 
-        if (pkt->data == flush_pkt.data)
+        if (pkt->data == flush_pkt.data) {
             avcodec_flush_buffers(dec);
+            flush_complete = 0;
+        }
 
         *pkt_temp = *pkt;
 

@@ -191,7 +191,6 @@ static int tta_get_unary(GetBitContext *gb)
 static av_cold int tta_decode_init(AVCodecContext * avctx)
 {
     TTAContext *s = avctx->priv_data;
-    int i;
 
     s->avctx = avctx;
 
@@ -203,7 +202,7 @@ static av_cold int tta_decode_init(AVCodecContext * avctx)
     if (show_bits_long(&s->gb, 32) == AV_RL32("TTA1"))
     {
         /* signature */
-        skip_bits(&s->gb, 32);
+        skip_bits_long(&s->gb, 32);
 
         s->format = get_bits(&s->gb, 16);
         if (s->format > 2) {
@@ -219,10 +218,13 @@ static av_cold int tta_decode_init(AVCodecContext * avctx)
         s->bps = (avctx->bits_per_coded_sample + 7) / 8;
         avctx->sample_rate = get_bits_long(&s->gb, 32);
         s->data_length = get_bits_long(&s->gb, 32);
-        skip_bits(&s->gb, 32); // CRC32 of header
+        skip_bits_long(&s->gb, 32); // CRC32 of header
 
         if (s->channels == 0) {
             av_log(s->avctx, AV_LOG_ERROR, "Invalid number of channels\n");
+            return AVERROR_INVALIDDATA;
+        } else if (avctx->sample_rate == 0) {
+            av_log(s->avctx, AV_LOG_ERROR, "Invalid samplerate\n");
             return AVERROR_INVALIDDATA;
         }
 
@@ -258,9 +260,8 @@ static av_cold int tta_decode_init(AVCodecContext * avctx)
             s->data_length, s->frame_length, s->last_frame_length, s->total_frames);
 
         // FIXME: seek table
-        for (i = 0; i < s->total_frames; i++)
-            skip_bits(&s->gb, 32);
-        skip_bits(&s->gb, 32); // CRC32 of seektable
+        skip_bits_long(&s->gb, 32 * s->total_frames);
+        skip_bits_long(&s->gb, 32); // CRC32 of seektable
 
         if(s->frame_length >= UINT_MAX / (s->channels * sizeof(int32_t))){
             av_log(avctx, AV_LOG_ERROR, "frame_length too large\n");
@@ -341,12 +342,16 @@ static int tta_decode_frame(AVCodecContext *avctx, void *data,
             unary--;
         }
 
-        if (get_bits_left(&s->gb) < k)
-            return -1;
+        if (get_bits_left(&s->gb) < k) {
+            ret = AVERROR_INVALIDDATA;
+            goto error;
+        }
 
         if (k) {
-            if (k > MIN_CACHE_BITS)
-                return -1;
+            if (k > MIN_CACHE_BITS) {
+                ret = AVERROR_INVALIDDATA;
+                goto error;
+            }
             value = (unary << k) + get_bits(&s->gb, k);
         } else
             value = unary;
@@ -399,9 +404,11 @@ static int tta_decode_frame(AVCodecContext *avctx, void *data,
         }
     }
 
-    if (get_bits_left(&s->gb) < 32)
-        return -1;
-    skip_bits(&s->gb, 32); // frame crc
+    if (get_bits_left(&s->gb) < 32) {
+        ret = AVERROR_INVALIDDATA;
+        goto error;
+    }
+    skip_bits_long(&s->gb, 32); // frame crc
 
     // convert to output buffer
     if (s->bps == 2) {
@@ -421,6 +428,11 @@ static int tta_decode_frame(AVCodecContext *avctx, void *data,
     *(AVFrame *)data = s->frame;
 
     return buf_size;
+error:
+    // reset decode buffer
+    if (s->bps == 3)
+        s->decode_buffer = NULL;
+    return ret;
 }
 
 static av_cold int tta_decode_close(AVCodecContext *avctx) {

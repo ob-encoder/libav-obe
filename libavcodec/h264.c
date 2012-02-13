@@ -105,7 +105,7 @@ int ff_h264_check_intra4x4_pred_mode(H264Context *h){
  * Check if the top & left blocks are available if needed and
  * change the dc mode so it only uses the available blocks.
  */
-int ff_h264_check_intra_pred_mode(H264Context *h, int mode){
+int ff_h264_check_intra_pred_mode(H264Context *h, int mode, int is_chroma){
     MpegEncContext * const s = &h->s;
     static const int8_t top [7]= {LEFT_DC_PRED8x8, 1,-1,-1};
     static const int8_t left[7]= { TOP_DC_PRED8x8,-1, 2,-1,DC_128_PRED8x8};
@@ -125,7 +125,7 @@ int ff_h264_check_intra_pred_mode(H264Context *h, int mode){
 
     if((h->left_samples_available&0x8080) != 0x8080){
         mode= left[ mode ];
-        if(h->left_samples_available&0x8080){ //mad cow disease mode, aka MBAFF + constrained_intra_pred
+        if(is_chroma && (h->left_samples_available&0x8080)){ //mad cow disease mode, aka MBAFF + constrained_intra_pred
             mode= ALZHEIMER_DC_L0T_PRED8x8 + (!(h->left_samples_available&0x8000)) + 2*(mode == DC_128_PRED8x8);
         }
         if(mode<0){
@@ -4098,75 +4098,6 @@ static inline void fill_mb_avail(H264Context *h){
     h->mb_avail[5]= 0; //FIXME move out
 }
 #endif
-
-#ifdef TEST
-#undef printf
-#undef random
-#define COUNT 8000
-#define SIZE (COUNT*40)
-int main(void){
-    int i;
-    uint8_t temp[SIZE];
-    PutBitContext pb;
-    GetBitContext gb;
-    DSPContext dsp;
-    AVCodecContext avctx;
-
-    avctx.av_class = avcodec_get_class();
-    dsputil_init(&dsp, &avctx);
-
-    init_put_bits(&pb, temp, SIZE);
-    printf("testing unsigned exp golomb\n");
-    for(i=0; i<COUNT; i++){
-        START_TIMER
-        set_ue_golomb(&pb, i);
-        STOP_TIMER("set_ue_golomb");
-    }
-    flush_put_bits(&pb);
-
-    init_get_bits(&gb, temp, 8*SIZE);
-    for(i=0; i<COUNT; i++){
-        int j, s = show_bits(&gb, 24);
-
-        START_TIMER
-        j= get_ue_golomb(&gb);
-        if(j != i){
-            printf("mismatch! at %d (%d should be %d) bits:%6X\n", i, j, i, s);
-//            return -1;
-        }
-        STOP_TIMER("get_ue_golomb");
-    }
-
-
-    init_put_bits(&pb, temp, SIZE);
-    printf("testing signed exp golomb\n");
-    for(i=0; i<COUNT; i++){
-        START_TIMER
-        set_se_golomb(&pb, i - COUNT/2);
-        STOP_TIMER("set_se_golomb");
-    }
-    flush_put_bits(&pb);
-
-    init_get_bits(&gb, temp, 8*SIZE);
-    for(i=0; i<COUNT; i++){
-        int j, s = show_bits(&gb, 24);
-
-        START_TIMER
-        j= get_se_golomb(&gb);
-        if(j != i - COUNT/2){
-            printf("mismatch! at %d (%d should be %d) bits:%6X\n", i, j, i, s);
-//            return -1;
-        }
-        STOP_TIMER("get_se_golomb");
-    }
-
-    printf("Testing RBSP\n");
-
-
-    return 0;
-}
-#endif /* TEST */
-
 
 av_cold void ff_h264_free_context(H264Context *h)
 {

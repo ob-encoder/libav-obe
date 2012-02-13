@@ -240,22 +240,18 @@ static int amf_parse_object(AVFormatContext *s, AVStream *astream, AVStream *vst
             if(amf_get_string(ioc, str_val, sizeof(str_val)) < 0)
                 return -1;
             break;
-        case AMF_DATA_TYPE_OBJECT: {
-            unsigned int keylen;
-
+        case AMF_DATA_TYPE_OBJECT:
             if ((vstream || astream) && key && !strcmp(KEYFRAMES_TAG, key) && depth == 1)
                 if (parse_keyframes_index(s, ioc, vstream ? vstream : astream,
                                           max_pos) < 0)
                     return -1;
 
-            while(avio_tell(ioc) < max_pos - 2 && (keylen = avio_rb16(ioc))) {
-                avio_skip(ioc, keylen); //skip key string
-                if(amf_parse_object(s, NULL, NULL, NULL, max_pos, depth + 1) < 0)
+            while (avio_tell(ioc) < max_pos - 2 && amf_get_string(ioc, str_val, sizeof(str_val)) > 0) {
+                if (amf_parse_object(s, astream, vstream, str_val, max_pos, depth + 1) < 0)
                     return -1; //if we couldn't skip, bomb out.
             }
             if(avio_r8(ioc) != AMF_END_OF_OBJECT)
                 return -1;
-        }
             break;
         case AMF_DATA_TYPE_NULL:
         case AMF_DATA_TYPE_UNDEFINED:
@@ -368,8 +364,7 @@ static AVStream *create_stream(AVFormatContext *s, int is_audio){
     return st;
 }
 
-static int flv_read_header(AVFormatContext *s,
-                           AVFormatParameters *ap)
+static int flv_read_header(AVFormatContext *s)
 {
     int offset, flags;
 
@@ -677,5 +672,4 @@ AVInputFormat ff_flv_demuxer = {
 #endif
     .read_close = flv_read_close,
     .extensions = "flv",
-    .value = CODEC_ID_FLV1,
 };

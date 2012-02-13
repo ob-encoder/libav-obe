@@ -59,7 +59,7 @@ typedef enum {
 } MXFPartitionType;
 
 typedef enum {
-    OP1a,
+    OP1a = 1,
     OP1b,
     OP1c,
     OP2a,
@@ -207,6 +207,7 @@ typedef struct {
     int current_edit_unit;
     int nb_index_tables;
     MXFIndexTable *index_tables;
+    int edit_units_per_packet;      ///< how many edit units to read at a time (PCM, OPAtom)
 } MXFContext;
 
 enum MXFWrappingScheme {
@@ -410,6 +411,7 @@ static int mxf_read_partition_pack(void *arg, AVIOContext *pb, int tag, int size
     MXFPartition *partition, *tmp_part;
     UID op;
     uint64_t footer_partition;
+    uint32_t nb_essence_containers;
 
     if (mxf->partitions_count+1 >= UINT_MAX / sizeof(*mxf->partitions))
         return AVERROR(ENOMEM);
@@ -464,6 +466,7 @@ static int mxf_read_partition_pack(void *arg, AVIOContext *pb, int tag, int size
     avio_skip(pb, 8);
     partition->body_sid = avio_rb32(pb);
     avio_read(pb, op, sizeof(UID));
+    nb_essence_containers = avio_rb32(pb);
 
     /* some files don'thave FooterPartition set in every partition */
     if (footer_partition) {
@@ -484,6 +487,14 @@ static int mxf_read_partition_pack(void *arg, AVIOContext *pb, int tag, int size
             partition->previous_partition, footer_partition,
             partition->index_sid, partition->body_sid);
 
+    /* sanity check PreviousPartition if set */
+    if (partition->previous_partition &&
+        mxf->run_in + partition->previous_partition >= klv_offset) {
+        av_log(mxf->fc, AV_LOG_ERROR,
+               "PreviousPartition points to this partition or forward\n");
+        return AVERROR_INVALIDDATA;
+    }
+
     if      (op[12] == 1 && op[13] == 1) mxf->op = OP1a;
     else if (op[12] == 1 && op[13] == 2) mxf->op = OP1b;
     else if (op[12] == 1 && op[13] == 3) mxf->op = OP1c;
@@ -493,9 +504,22 @@ static int mxf_read_partition_pack(void *arg, AVIOContext *pb, int tag, int size
     else if (op[12] == 3 && op[13] == 1) mxf->op = OP3a;
     else if (op[12] == 3 && op[13] == 2) mxf->op = OP3b;
     else if (op[12] == 3 && op[13] == 3) mxf->op = OP3c;
-    else if (op[12] == 0x10)             mxf->op = OPAtom;
     else if (op[12] == 64&& op[13] == 1) mxf->op = OPSonyOpt;
-    else {
+    else if (op[12] == 0x10) {
+        /* SMPTE 390m: "There shall be exactly one essence container"
+         * 2011_DCPTEST_24FPS.V.mxf violates this and is frame wrapped,
+         * which is why we assume OP1a. */
+        if (nb_essence_containers != 1) {
+            /* only nag once */
+            if (!mxf->op)
+                av_log(mxf->fc, AV_LOG_WARNING,
+                       "\"OPAtom\" with %u ECs - assuming OP1a\n",
+                       nb_essence_containers);
+
+            mxf->op = OP1a;
+        } else
+            mxf->op = OPAtom;
+    } else {
         av_log(mxf->fc, AV_LOG_ERROR, "unknown operational pattern: %02xh %02xh - guessing OP1a\n", op[12], op[13]);
         mxf->op = OP1a;
     }
@@ -1048,8 +1072,10 @@ static int mxf_compute_ptses_fake_index(MXFContext *mxf, MXFIndexTable *index_ta
     for (i = 0; i < index_table->nb_segments; i++) {
         MXFIndexTableSegment *s = index_table->segments[i];
 
-        if (!s->nb_index_entries)
+        if (!s->nb_index_entries) {
+            index_table->nb_ptses = 0;
             return 0;                               /* no TemporalOffsets */
+        }
 
         index_table->nb_ptses += s->index_duration;
     }
@@ -1105,13 +1131,24 @@ static int mxf_compute_ptses_fake_index(MXFContext *mxf, MXFIndexTable *index_ta
     for (i = x = 0; i < index_table->nb_segments; i++) {
         MXFIndexTableSegment *s = index_table->segments[i];
         int index_delta = 1;
+        int n = s->nb_index_entries;
 
-        if (s->nb_index_entries == 2 * s->index_duration + 1)
+        if (s->nb_index_entries == 2 * s->index_duration + 1) {
             index_delta = 2;    /* Avid index */
+            /* ignore the last entry - it's the size of the essence container */
+            n--;
+        }
 
-        for (j = 0; j < s->nb_index_entries; j += index_delta, x++) {
+        for (j = 0; j < n; j += index_delta, x++) {
             int offset = s->temporal_offset_entries[j] / index_delta;
             int index  = x + offset;
+
+            if (x >= index_table->nb_ptses) {
+                av_log(mxf->fc, AV_LOG_ERROR,
+                       "x >= nb_ptses - IndexEntryCount %i < IndexDuration %"PRId64"?\n",
+                       s->nb_index_entries, s->index_duration);
+                break;
+            }
 
             index_table->fake_index[x].timestamp = x;
             index_table->fake_index[x].flags = !(s->flag_entries[j] & 0x30) ? AVINDEX_KEYFRAME : 0;
@@ -1304,7 +1341,7 @@ static int mxf_parse_structural_metadata(MXFContext *mxf)
                 break;
             }
         }
-        if (!source_track)
+        if (!source_track || !component)
             continue;
 
         if (!(source_track->sequence = mxf_resolve_strong_ref(mxf, &source_track->sequence_ref, Sequence))) {
@@ -1398,7 +1435,10 @@ static int mxf_parse_structural_metadata(MXFContext *mxf)
                 st->codec->codec_id = container_ul->id;
             st->codec->channels = descriptor->channels;
             st->codec->bits_per_coded_sample = descriptor->bits_per_sample;
-            st->codec->sample_rate = descriptor->sample_rate.num / descriptor->sample_rate.den;
+
+            if (descriptor->sample_rate.den > 0)
+                st->codec->sample_rate = descriptor->sample_rate.num / descriptor->sample_rate.den;
+
             /* TODO: implement CODEC_ID_RAWAUDIO */
             if (st->codec->codec_id == CODEC_ID_PCM_S16LE) {
                 if (descriptor->bits_per_sample > 16 && descriptor->bits_per_sample <= 24)
@@ -1464,7 +1504,7 @@ static int mxf_read_local_tags(MXFContext *mxf, KLVPacket *klv, MXFMetadataReadF
 
     if (!ctx)
         return AVERROR(ENOMEM);
-    while (avio_tell(pb) + 4 < klv_end) {
+    while (avio_tell(pb) + 4 < klv_end && !pb->eof_reached) {
         int ret;
         int tag = avio_rb16(pb);
         int size = avio_rb16(pb); /* KLV specified by 0x53 */
@@ -1492,7 +1532,15 @@ static int mxf_read_local_tags(MXFContext *mxf, KLVPacket *klv, MXFMetadataReadF
         else if ((ret = read_child(ctx, pb, tag, size, uid, -1)) < 0)
             return ret;
 
-        avio_seek(pb, next, SEEK_SET);
+        /* Accept the 64k local set limit being exceeded (Avid). Don't accept
+         * it extending past the end of the KLV though (zzuf5.mxf). */
+        if (avio_tell(pb) > klv_end) {
+            av_log(mxf->fc, AV_LOG_ERROR,
+                   "local tag %#04x extends past end of local set @ %#"PRIx64"\n",
+                   tag, klv->offset);
+            return AVERROR_INVALIDDATA;
+        } else if (avio_tell(pb) <= next)   /* only seek forward, else this can loop for a long time */
+            avio_seek(pb, next, SEEK_SET);
     }
     if (ctx_size) ctx->type = type;
     return ctx_size ? mxf_add_metadata_set(mxf, ctx) : 0;
@@ -1527,11 +1575,6 @@ static int mxf_parse_handle_essence(MXFContext *mxf)
 {
     AVIOContext *pb = mxf->fc->pb;
     int64_t ret;
-
-    if (!mxf->current_partition) {
-        av_log(mxf->fc, AV_LOG_ERROR, "found essence prior to PartitionPack\n");
-        return AVERROR_INVALIDDATA;
-    }
 
     if (mxf->parsing_backward) {
         return mxf_seek_to_previous_partition(mxf);
@@ -1648,7 +1691,43 @@ static inline void compute_partition_essence_offset(AVFormatContext *s,
     }
 }
 
-static int mxf_read_header(AVFormatContext *s, AVFormatParameters *ap)
+static int is_pcm(enum CodecID codec_id)
+{
+    /* we only care about "normal" PCM codecs until we get samples */
+    return codec_id >= CODEC_ID_PCM_S16LE && codec_id < CODEC_ID_PCM_S24DAUD;
+}
+
+/**
+ * Deal with the case where for some audio atoms EditUnitByteCount is
+ * very small (2, 4..). In those cases we should read more than one
+ * sample per call to mxf_read_packet().
+ */
+static void mxf_handle_small_eubc(AVFormatContext *s)
+{
+    MXFContext *mxf = s->priv_data;
+
+    /* assuming non-OPAtom == frame wrapped
+     * no sane writer would wrap 2 byte PCM packets with 20 byte headers.. */
+    if (mxf->op != OPAtom)
+        return;
+
+    /* expect PCM with exactly one index table segment and a small (< 32) EUBC */
+    if (s->nb_streams != 1                                     ||
+        s->streams[0]->codec->codec_type != AVMEDIA_TYPE_AUDIO ||
+        !is_pcm(s->streams[0]->codec->codec_id)                ||
+        mxf->nb_index_tables != 1                              ||
+        mxf->index_tables[0].nb_segments != 1                  ||
+        mxf->index_tables[0].segments[0]->edit_unit_byte_count >= 32)
+        return;
+
+    /* arbitrarily default to 48 kHz PAL audio frame size */
+    /* TODO: We could compute this from the ratio between the audio
+     *       and video edit rates for 48 kHz NTSC we could use the
+     *       1802-1802-1802-1802-1801 pattern. */
+    mxf->edit_units_per_packet = 1920;
+}
+
+static int mxf_read_header(AVFormatContext *s)
 {
     MXFContext *mxf = s->priv_data;
     KLVPacket klv;
@@ -1656,6 +1735,7 @@ static int mxf_read_header(AVFormatContext *s, AVFormatParameters *ap)
     int ret;
 
     mxf->last_forward_tell = INT64_MAX;
+    mxf->edit_units_per_packet = 1;
 
     if (!mxf_read_sync(s->pb, mxf_header_partition_pack_key, 14)) {
         av_log(s, AV_LOG_ERROR, "could not find header partition pack key\n");
@@ -1682,6 +1762,13 @@ static int mxf_read_header(AVFormatContext *s, AVFormatParameters *ap)
             IS_KLV_KEY(klv.key, mxf_essence_element_key) ||
             IS_KLV_KEY(klv.key, mxf_avid_essence_element_key) ||
             IS_KLV_KEY(klv.key, mxf_system_item_key)) {
+
+            if (!mxf->current_partition) {
+                av_log(mxf->fc, AV_LOG_ERROR,
+                       "found essence prior to first PartitionPack\n");
+                return AVERROR_INVALIDDATA;
+            }
+
             if (!mxf->current_partition->essence_offset) {
                 compute_partition_essence_offset(s, mxf, &klv);
             }
@@ -1708,6 +1795,14 @@ static int mxf_read_header(AVFormatContext *s, AVFormatParameters *ap)
                 } else {
                     uint64_t next = avio_tell(s->pb) + klv.length;
                     res = metadata->read(mxf, s->pb, 0, klv.length, klv.key, klv.offset);
+
+                    /* only seek forward, else this can loop for a long time */
+                    if (avio_tell(s->pb) > next) {
+                        av_log(s, AV_LOG_ERROR, "read past end of KLV @ %#"PRIx64"\n",
+                               klv.offset);
+                        return AVERROR_INVALIDDATA;
+                    }
+
                     avio_seek(s->pb, next, SEEK_SET);
                 }
                 if (res < 0) {
@@ -1746,6 +1841,8 @@ static int mxf_read_header(AVFormatContext *s, AVFormatParameters *ap)
         return AVERROR_INVALIDDATA;
     }
 
+    mxf_handle_small_eubc(s);
+
     return 0;
 }
 
@@ -1754,21 +1851,35 @@ static int mxf_read_header(AVFormatContext *s, AVFormatParameters *ap)
  */
 static void mxf_packet_timestamps(MXFContext *mxf, AVPacket *pkt)
 {
-    int64_t next_ofs;
+    int64_t last_ofs = -1, next_ofs;
     MXFIndexTable *t = &mxf->index_tables[0];
 
+    /* this is called from the OP1a demuxing logic, which means there
+     * may be no index tables */
+    if (mxf->nb_index_tables <= 0)
+        return;
+
     /* find mxf->current_edit_unit so that the next edit unit starts ahead of pkt->pos */
-    for (;;) {
+    while (mxf->current_edit_unit >= 0) {
         if (mxf_edit_unit_absolute_offset(mxf, t, mxf->current_edit_unit + 1, NULL, &next_ofs, 0) < 0)
             break;
+
+        if (next_ofs <= last_ofs) {
+            /* large next_ofs didn't change or current_edit_unit wrapped
+             * around this fixes the infinite loop on zzuf3.mxf */
+            av_log(mxf->fc, AV_LOG_ERROR,
+                   "next_ofs didn't change. not deriving packet timestamps\n");
+            return;
+        }
 
         if (next_ofs > pkt->pos)
             break;
 
+        last_ofs = next_ofs;
         mxf->current_edit_unit++;
     }
 
-    if (mxf->current_edit_unit >= t->nb_ptses)
+    if (mxf->current_edit_unit < 0 || mxf->current_edit_unit >= t->nb_ptses)
         return;
 
     pkt->dts = mxf->current_edit_unit + t->first_dts;
@@ -1833,23 +1944,27 @@ static int mxf_read_packet(AVFormatContext *s, AVPacket *pkt)
     int64_t ret64, pos, next_pos;
     AVStream *st;
     MXFIndexTable *t;
+    int edit_units;
 
     if (mxf->op != OPAtom)
         return mxf_read_packet_old(s, pkt);
 
     /* OPAtom - clip wrapped demuxing */
+    /* NOTE: mxf_read_header() makes sure nb_index_tables > 0 for OPAtom */
     st = s->streams[0];
     t = &mxf->index_tables[0];
 
     if (mxf->current_edit_unit >= st->duration)
         return AVERROR_EOF;
 
+    edit_units = FFMIN(mxf->edit_units_per_packet, st->duration - mxf->current_edit_unit);
+
     if ((ret = mxf_edit_unit_absolute_offset(mxf, t, mxf->current_edit_unit, NULL, &pos, 1)) < 0)
         return ret;
 
     /* compute size by finding the next edit unit or the end of the essence container
      * not pretty, but it works */
-    if ((ret = mxf_edit_unit_absolute_offset(mxf, t, mxf->current_edit_unit + 1, NULL, &next_pos, 0)) < 0 &&
+    if ((ret = mxf_edit_unit_absolute_offset(mxf, t, mxf->current_edit_unit + edit_units, NULL, &next_pos, 0)) < 0 &&
         (next_pos = mxf_essence_container_end(mxf, t->body_sid)) <= 0) {
         av_log(s, AV_LOG_ERROR, "unable to compute the size of the last packet\n");
         return AVERROR_INVALIDDATA;
@@ -1873,7 +1988,7 @@ static int mxf_read_packet(AVFormatContext *s, AVPacket *pkt)
     }
 
     pkt->stream_index = 0;
-    mxf->current_edit_unit++;
+    mxf->current_edit_unit += edit_units;
 
     return 0;
 }

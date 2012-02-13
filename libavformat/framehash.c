@@ -1,4 +1,6 @@
 /*
+ * Common functions for the frame{crc,md5} muxers
+ *
  * This file is part of Libav.
  *
  * Libav is free software; you can redistribute it and/or
@@ -16,19 +18,16 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-/**
- * @file
- * This header is provided for compatibility only and will be removed
- * on next major bump
- */
+#include "internal.h"
 
-#ifndef AVCODEC_OPT_H
-#define AVCODEC_OPT_H
-
-#include "libavcodec/version.h"
-
-#if FF_API_OPT_H
-#include "libavutil/opt.h"
-#endif
-
-#endif /* AVCODEC_OPT_H */
+int ff_framehash_write_header(AVFormatContext *s)
+{
+    int i;
+    for (i = 0; i < s->nb_streams; i++) {
+        AVStream *st = s->streams[i];
+        avpriv_set_pts_info(st, 64, st->codec->time_base.num, st->codec->time_base.den);
+        avio_printf(s->pb, "#tb %d: %d/%d\n", i, st->time_base.num, st->time_base.den);
+        avio_flush(s->pb);
+    }
+    return 0;
+}
