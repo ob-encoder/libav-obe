@@ -179,6 +179,10 @@ if [ -n "$do_xwd" ] ; then
 do_image_formats xwd
 fi
 
+if [ -n "$do_dpx" ] ; then
+do_image_formats dpx
+fi
+
 # audio only
 
 if [ -n "$do_wav" ] ; then
@@ -219,6 +223,10 @@ fi
 
 if [ -n "$do_rso" ] ; then
 do_audio_only rso
+fi
+
+if [ -n "$do_sox" ] ; then
+do_audio_only sox
 fi
 
 # pix_fmt conversions

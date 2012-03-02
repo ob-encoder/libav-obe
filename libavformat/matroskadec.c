@@ -514,7 +514,7 @@ static EbmlSyntax matroska_clusters[] = {
     { 0 }
 };
 
-static const char *matroska_doctypes[] = { "matroska", "webm" };
+static const char *const matroska_doctypes[] = { "matroska", "webm" };
 
 /*
  * Return: Whether we reached the end of a level in the hierarchy or not.
@@ -639,16 +639,19 @@ static int ebml_read_float(AVIOContext *pb, int size, double *num)
  */
 static int ebml_read_ascii(AVIOContext *pb, int size, char **str)
 {
-    av_free(*str);
+    char *res;
+
     /* EBML strings are usually not 0-terminated, so we allocate one
      * byte more, read the string and NULL-terminate it ourselves. */
-    if (!(*str = av_malloc(size + 1)))
+    if (!(res = av_malloc(size + 1)))
         return AVERROR(ENOMEM);
-    if (avio_read(pb, (uint8_t *) *str, size) != size) {
-        av_freep(str);
+    if (avio_read(pb, (uint8_t *) res, size) != size) {
+        av_free(res);
         return AVERROR(EIO);
     }
-    (*str)[size] = '\0';
+    (res)[size] = '\0';
+    av_free(*str);
+    *str = res;
 
     return 0;
 }
@@ -1422,7 +1425,7 @@ static int matroska_read_header(AVFormatContext *s)
                    && (track->codec_priv.size >= 86)
                    && (track->codec_priv.data != NULL)) {
             track->video.fourcc = AV_RL32(track->codec_priv.data);
-            codec_id=ff_codec_get_id(codec_movvideo_tags, track->video.fourcc);
+            codec_id=ff_codec_get_id(ff_codec_movvideo_tags, track->video.fourcc);
         } else if (codec_id == CODEC_ID_PCM_S16BE) {
             switch (track->audio.bitdepth) {
             case  8:  codec_id = CODEC_ID_PCM_U8;     break;

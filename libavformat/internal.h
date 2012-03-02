@@ -37,6 +37,11 @@ typedef struct AVCodecTag {
     unsigned int tag;
 } AVCodecTag;
 
+typedef struct CodecMime{
+    char str[32];
+    enum CodecID id;
+} CodecMime;
+
 void ff_dynarray_add(intptr_t **tab_ptr, int *nb_ptr, intptr_t elem);
 
 #ifdef __GNUC__
@@ -54,7 +59,7 @@ do {\
 } while(0)
 #endif
 
-struct tm *brktimegm(time_t secs, struct tm *tm);
+struct tm *ff_brktimegm(time_t secs, struct tm *tm);
 
 char *ff_data_to_hex(char *buf, const uint8_t *src, int size, int lowercase);
 

@@ -48,15 +48,13 @@
 void ff_mmx_idct(DCTELEM *data);
 void ff_mmxext_idct(DCTELEM *data);
 
-void odivx_idct_c(short *block);
-
 // BFIN
 void ff_bfin_idct(DCTELEM *block);
 void ff_bfin_fdct(DCTELEM *block);
 
 // ALTIVEC
-void fdct_altivec(DCTELEM *block);
-//void idct_altivec(DCTELEM *block);?? no routine
+void ff_fdct_altivec(DCTELEM *block);
+//void ff_idct_altivec(DCTELEM *block);?? no routine
 
 // ARM
 void ff_j_rev_dct_arm(DCTELEM *data);
@@ -87,7 +85,7 @@ static int cpu_flags;
 static const struct algo fdct_tab[] = {
     { "REF-DBL",        ff_ref_fdct,           NO_PERM    },
     { "FAAN",           ff_faandct,            FAAN_SCALE },
-    { "IJG-AAN-INT",    fdct_ifast,            SCALE_PERM },
+    { "IJG-AAN-INT",    ff_fdct_ifast,         SCALE_PERM },
     { "IJG-LLM-INT",    ff_jpeg_fdct_islow_8,  NO_PERM    },
 
 #if HAVE_MMX
@@ -97,7 +95,7 @@ static const struct algo fdct_tab[] = {
 #endif
 
 #if HAVE_ALTIVEC
-    { "altivecfdct",    fdct_altivec,          NO_PERM,   AV_CPU_FLAG_ALTIVEC },
+    { "altivecfdct",    ff_fdct_altivec,       NO_PERM,   AV_CPU_FLAG_ALTIVEC },
 #endif
 
 #if ARCH_BFIN
@@ -110,7 +108,7 @@ static const struct algo fdct_tab[] = {
 static const struct algo idct_tab[] = {
     { "FAANI",          ff_faanidct,           NO_PERM  },
     { "REF-DBL",        ff_ref_idct,           NO_PERM  },
-    { "INT",            j_rev_dct,             MMX_PERM },
+    { "INT",            ff_j_rev_dct,          MMX_PERM },
     { "SIMPLE-C",       ff_simple_idct_8,      NO_PERM  },
 
 #if HAVE_MMX

@@ -70,7 +70,10 @@ static av_cold int libgsm_encode_init(AVCodecContext *avctx) {
     }
 
     avctx->coded_frame= avcodec_alloc_frame();
-    avctx->coded_frame->key_frame= 1;
+    if (!avctx->coded_frame) {
+        gsm_destroy(avctx->priv_data);
+        return AVERROR(ENOMEM);
+    }
 
     return 0;
 }

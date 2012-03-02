@@ -88,7 +88,6 @@ Configuration options:
   --disable-avcodec        disable libavcodec build
   --disable-avformat       disable libavformat build
   --disable-swscale        disable libswscale build
-  --enable-postproc        enable libpostproc build (deprecated) [no]
   --disable-avfilter       disable video filter support [no]
   --disable-pthreads       disable pthreads [auto]
   --disable-w32threads     disable Win32 threads [auto]
@@ -974,7 +973,6 @@ CONFIG_LIST="
     nonfree
     openssl
     pic
-    postproc
     rdft
     rtpdec
     runtime_cpudetect
@@ -1378,7 +1376,7 @@ truehd_decoder_select="mlp_decoder"
 tscc_decoder_select="zlib"
 twinvq_decoder_select="mdct lsp sinewin"
 vc1_decoder_select="h263_decoder h264chroma"
-vc1_dxva2_hwaccel_deps="dxva2api_h DXVA_PictureParameters_wDecodedPictureIndex"
+vc1_dxva2_hwaccel_deps="dxva2api_h"
 vc1_dxva2_hwaccel_select="dxva2 vc1_decoder"
 vc1_vaapi_hwaccel_select="vaapi vc1_decoder"
 vc1_vdpau_decoder_select="vdpau vc1_decoder"
@@ -1418,7 +1416,6 @@ h264_parser_select="golomb h264chroma h264dsp h264pred"
 
 # external libraries
 libdirac_decoder_deps="libdirac !libschroedinger"
-libdirac_encoder_deps="libdirac"
 libfaac_encoder_deps="libfaac"
 libgsm_decoder_deps="libgsm"
 libgsm_encoder_deps="libgsm"
@@ -1501,13 +1498,15 @@ httpproxy_protocol_select="tcp_protocol"
 http_protocol_deps="network"
 http_protocol_select="tcp_protocol"
 https_protocol_select="tls_protocol"
+librtmp_protocol_deps="librtmp"
+librtmpe_protocol_deps="librtmp"
+librtmps_protocol_deps="librtmp"
+librtmpt_protocol_deps="librtmp"
+librtmpte_protocol_deps="librtmp"
 mmsh_protocol_select="http_protocol"
 mmst_protocol_deps="network"
+rtmp_protocol_deps="!librtmp_protocol"
 rtmp_protocol_select="tcp_protocol"
-rtmpe_protocol_deps="librtmp"
-rtmps_protocol_deps="librtmp"
-rtmpt_protocol_deps="librtmp"
-rtmpte_protocol_deps="librtmp"
 rtp_protocol_select="udp_protocol"
 tcp_protocol_deps="network"
 tls_protocol_deps_any="openssl gnutls"
@@ -1530,7 +1529,6 @@ yadif_filter_deps="gpl"
 # libraries
 avdevice_deps="avcodec avformat"
 avformat_deps="avcodec"
-postproc_deps="gpl"
 
 # programs
 avconv_deps="avcodec avformat swscale"
@@ -2883,8 +2881,6 @@ check_header vdpau/vdpau.h
 check_header vdpau/vdpau_x11.h
 check_header X11/extensions/XvMClib.h
 
-check_struct dxva2api.h DXVA_PictureParameters wDecodedPictureIndex
-
 disabled  zlib || check_lib   zlib.h      zlibVersion -lz   || disable  zlib
 disabled bzlib || check_lib2 bzlib.h BZ2_bzlibVersion -lbz2 || disable bzlib
 
@@ -2940,8 +2936,8 @@ enabled avisynth   && require2 vfw32 "windows.h vfw.h" AVIFileInit -lavifil32
 enabled frei0r     && { check_header frei0r.h || die "ERROR: frei0r.h header not found"; }
 enabled gnutls     && require_pkg_config gnutls gnutls/gnutls.h gnutls_global_init
 enabled libdirac   && require_pkg_config dirac                          \
-    "libdirac_decoder/dirac_parser.h libdirac_encoder/dirac_encoder.h"  \
-    "dirac_decoder_init dirac_encoder_init"
+    "libdirac_decoder/dirac_parser.h"  \
+    "dirac_decoder_init"
 enabled libfaac    && require2 libfaac "stdint.h faac.h" faacEncGetVersion -lfaac
 enabled libfreetype && require_pkg_config freetype2 "ft2build.h freetype/freetype.h" FT_Init_FreeType
 enabled libgsm     && require  libgsm gsm/gsm.h gsm_create -lgsm
@@ -3066,7 +3062,7 @@ enabled extra_warnings && check_cflags -Winline
 
 # add some linker flags
 check_ldflags -Wl,--warn-common
-check_ldflags -Wl,-rpath-link=libpostproc:libswscale:libavfilter:libavdevice:libavformat:libavcodec:libavutil
+check_ldflags -Wl,-rpath-link=libswscale:libavfilter:libavdevice:libavformat:libavcodec:libavutil
 test_ldflags -Wl,-Bsymbolic && append SHFLAGS -Wl,-Bsymbolic
 
 enabled xmm_clobber_test &&                             \
@@ -3222,7 +3218,6 @@ echo "optimize for size         ${small-no}"
 echo "optimizations             ${optimizations-no}"
 echo "static                    ${static-no}"
 echo "shared                    ${shared-no}"
-echo "postprocessing support    ${postproc-no}"
 echo "new filter support        ${avfilter-no}"
 echo "network support           ${network-no}"
 echo "threading support         ${thread_type-no}"
@@ -3374,7 +3369,6 @@ get_version LIBAVDEVICE libavdevice/avdevice.h
 get_version LIBAVFILTER libavfilter/version.h
 get_version LIBAVFORMAT libavformat/version.h
 get_version LIBAVUTIL   libavutil/avutil.h
-get_version LIBPOSTPROC libpostproc/postprocess.h
 get_version LIBSWSCALE  libswscale/swscale.h
 
 cat > $TMPH <<EOF
@@ -3493,5 +3487,4 @@ pkgconfig_generate libavcodec "Libav codec library" "$LIBAVCODEC_VERSION" "$extr
 pkgconfig_generate libavformat "Libav container format library" "$LIBAVFORMAT_VERSION" "$extralibs" "libavcodec = $LIBAVCODEC_VERSION"
 pkgconfig_generate libavdevice "Libav device handling library" "$LIBAVDEVICE_VERSION" "$extralibs" "libavformat = $LIBAVFORMAT_VERSION"
 pkgconfig_generate libavfilter "Libav video filtering library" "$LIBAVFILTER_VERSION" "$extralibs"
-pkgconfig_generate libpostproc "Libav postprocessing library" "$LIBPOSTPROC_VERSION" "" "libavutil = $LIBAVUTIL_VERSION"
 pkgconfig_generate libswscale "Libav image rescaling library" "$LIBSWSCALE_VERSION" "$LIBM" "libavutil = $LIBAVUTIL_VERSION"

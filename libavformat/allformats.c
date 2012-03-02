@@ -22,6 +22,7 @@
 #include "rtp.h"
 #include "rdt.h"
 #include "url.h"
+#include "version.h"
 
 #define REGISTER_MUXER(X,x) { \
     extern AVOutputFormat ff_##x##_muxer; \
@@ -59,7 +60,6 @@ void av_register_all(void)
     REGISTER_DEMUXER  (ANM, anm);
     REGISTER_DEMUXER  (APC, apc);
     REGISTER_DEMUXER  (APE, ape);
-    REGISTER_DEMUXER  (APPLEHTTP, applehttp);
     REGISTER_MUXDEMUX (ASF, asf);
     REGISTER_MUXDEMUX (ASS, ass);
     REGISTER_MUXER    (ASF_STREAM, asf_stream);
@@ -76,6 +76,7 @@ void av_register_all(void)
     REGISTER_DEMUXER  (CAF, caf);
     REGISTER_MUXDEMUX (CAVSVIDEO, cavsvideo);
     REGISTER_DEMUXER  (CDG, cdg);
+    REGISTER_DEMUXER  (CDXL, cdxl);
     REGISTER_MUXER    (CRC, crc);
     REGISTER_MUXDEMUX (DAUD, daud);
     REGISTER_DEMUXER  (DFA, dfa);
@@ -104,6 +105,7 @@ void av_register_all(void)
     REGISTER_MUXDEMUX (H261, h261);
     REGISTER_MUXDEMUX (H263, h263);
     REGISTER_MUXDEMUX (H264, h264);
+    REGISTER_DEMUXER  (HLS, hls);
     REGISTER_DEMUXER  (IDCIN, idcin);
     REGISTER_DEMUXER  (IFF, iff);
     REGISTER_MUXDEMUX (IMAGE2, image2);
@@ -237,15 +239,15 @@ void av_register_all(void)
     REGISTER_DEMUXER  (YOP, yop);
     REGISTER_MUXDEMUX (YUV4MPEGPIPE, yuv4mpegpipe);
 
-    /* external libraries */
-    REGISTER_MUXDEMUX (LIBNUT, libnut);
-
     /* protocols */
+#if FF_API_APPLEHTTP_PROTO
     REGISTER_PROTOCOL (APPLEHTTP, applehttp);
+#endif
     REGISTER_PROTOCOL (CONCAT, concat);
     REGISTER_PROTOCOL (CRYPTO, crypto);
     REGISTER_PROTOCOL (FILE, file);
     REGISTER_PROTOCOL (GOPHER, gopher);
+    REGISTER_PROTOCOL (HLS, hls);
     REGISTER_PROTOCOL (HTTP, http);
     REGISTER_PROTOCOL (HTTPPROXY, httpproxy);
     REGISTER_PROTOCOL (HTTPS, https);
@@ -254,12 +256,16 @@ void av_register_all(void)
     REGISTER_PROTOCOL (MD5,  md5);
     REGISTER_PROTOCOL (PIPE, pipe);
     REGISTER_PROTOCOL (RTMP, rtmp);
-    REGISTER_PROTOCOL (RTMPE, rtmpe);
-    REGISTER_PROTOCOL (RTMPS, rtmps);
-    REGISTER_PROTOCOL (RTMPT, rtmpt);
-    REGISTER_PROTOCOL (RTMPTE, rtmpte);
     REGISTER_PROTOCOL (RTP, rtp);
     REGISTER_PROTOCOL (TCP, tcp);
     REGISTER_PROTOCOL (TLS, tls);
     REGISTER_PROTOCOL (UDP, udp);
+
+    /* external libraries */
+    REGISTER_MUXDEMUX (LIBNUT, libnut);
+    REGISTER_PROTOCOL (LIBRTMP, librtmp);
+    REGISTER_PROTOCOL (LIBRTMPE, librtmpe);
+    REGISTER_PROTOCOL (LIBRTMPS, librtmps);
+    REGISTER_PROTOCOL (LIBRTMPT, librtmpt);
+    REGISTER_PROTOCOL (LIBRTMPTE, librtmpte);
 }

@@ -449,7 +449,7 @@ static int alloc_buffer(InputStream *ist, FrameBuffer **pbuf)
     /* XXX this shouldn't be needed, but some tests break without this line
      * those decoders are buggy and need to be fixed.
      * the following tests fail:
-     * bethsoft-vid, cdgraphics, ansi, aasc, fraps-v1, qtrle-1bit
+     * cdgraphics, ansi, aasc, fraps-v1, qtrle-1bit
      */
     memset(buf->base[0], 128, ret);
 
@@ -1356,11 +1356,12 @@ static void do_video_out(AVFormatContext *s,
     int nb_frames, i, ret, format_video_sync;
     AVFrame *final_picture;
     AVCodecContext *enc;
-    double sync_ipts;
+    double sync_ipts, delta;
 
     enc = ost->st->codec;
 
     sync_ipts = get_sync_ipts(ost, in_picture->pts) / av_q2d(enc->time_base);
+    delta = sync_ipts - ost->sync_opts;
 
     /* by default, we output a single frame */
     nb_frames = 1;
@@ -1372,31 +1373,36 @@ static void do_video_out(AVFormatContext *s,
         format_video_sync = (s->oformat->flags & AVFMT_NOTIMESTAMPS) ? VSYNC_PASSTHROUGH :
                             (s->oformat->flags & AVFMT_VARIABLE_FPS) ? VSYNC_VFR : VSYNC_CFR;
 
-    if (format_video_sync != VSYNC_PASSTHROUGH) {
-        double vdelta = sync_ipts - ost->sync_opts;
+    switch (format_video_sync) {
+    case VSYNC_CFR:
         // FIXME set to 0.5 after we fix some dts/pts bugs like in avidec.c
-        if (vdelta < -1.1)
+        if (delta < -1.1)
             nb_frames = 0;
-        else if (format_video_sync == VSYNC_VFR) {
-            if (vdelta <= -0.6) {
-                nb_frames = 0;
-            } else if (vdelta > 0.6)
-                ost->sync_opts = lrintf(sync_ipts);
-        } else if (vdelta > 1.1)
-            nb_frames = lrintf(vdelta);
-        if (nb_frames == 0) {
-            ++nb_frames_drop;
-            av_log(NULL, AV_LOG_VERBOSE, "*** drop!\n");
-        } else if (nb_frames > 1) {
-            nb_frames_dup += nb_frames - 1;
-            av_log(NULL, AV_LOG_VERBOSE, "*** %d dup!\n", nb_frames - 1);
-        }
-    } else
+        else if (delta > 1.1)
+            nb_frames = lrintf(delta);
+        break;
+    case VSYNC_VFR:
+        if (delta <= -0.6)
+            nb_frames = 0;
+        else if (delta > 0.6)
+            ost->sync_opts = lrintf(sync_ipts);
+        break;
+    case VSYNC_PASSTHROUGH:
         ost->sync_opts = lrintf(sync_ipts);
+        break;
+    default:
+        av_assert0(0);
+    }
 
     nb_frames = FFMIN(nb_frames, ost->max_frames - ost->frame_number);
-    if (nb_frames <= 0)
+    if (nb_frames == 0) {
+        nb_frames_drop++;
+        av_log(NULL, AV_LOG_VERBOSE, "*** drop!\n");
         return;
+    } else if (nb_frames > 1) {
+        nb_frames_dup += nb_frames - 1;
+        av_log(NULL, AV_LOG_VERBOSE, "*** %d dup!\n", nb_frames - 1);
+    }
 
 #if !CONFIG_AVFILTER
     do_video_resample(ost, ist, in_picture, &final_picture);
@@ -1795,6 +1801,7 @@ static void do_streamcopy(InputStream *ist, OutputStream *ost, const AVPacket *p
     if (  ost->st->codec->codec_id != CODEC_ID_H264
        && ost->st->codec->codec_id != CODEC_ID_MPEG1VIDEO
        && ost->st->codec->codec_id != CODEC_ID_MPEG2VIDEO
+       && ost->st->codec->codec_id != CODEC_ID_VC1
        ) {
         if (av_parser_change(ist->st->parser, ost->st->codec, &opkt.data, &opkt.size, pkt->data, pkt->size, pkt->flags & AV_PKT_FLAG_KEY))
             opkt.destruct = av_destruct_packet;
@@ -2443,13 +2450,30 @@ static int transcode_init(OutputFile *output_files,
                 ost->resample_width   = icodec->width;
                 ost->resample_pix_fmt = icodec->pix_fmt;
 
-                if (!ost->frame_rate.num)
-                    ost->frame_rate = ist->st->r_frame_rate.num ? ist->st->r_frame_rate : (AVRational) { 25, 1 };
-                if (ost->enc && ost->enc->supported_framerates && !ost->force_fps) {
-                    int idx = av_find_nearest_q_idx(ost->frame_rate, ost->enc->supported_framerates);
-                    ost->frame_rate = ost->enc->supported_framerates[idx];
+                /*
+                 * We want CFR output if and only if one of those is true:
+                 * 1) user specified output framerate with -r
+                 * 2) user specified -vsync cfr
+                 * 3) output format is CFR and the user didn't force vsync to
+                 *    something else than CFR
+                 *
+                 * in such a case, set ost->frame_rate
+                 */
+                if (!ost->frame_rate.num &&
+                    (video_sync_method ==  VSYNC_CFR ||
+                     (video_sync_method ==  VSYNC_AUTO &&
+                      !(oc->oformat->flags & (AVFMT_NOTIMESTAMPS | AVFMT_VARIABLE_FPS))))) {
+                    ost->frame_rate = ist->st->r_frame_rate.num ? ist->st->r_frame_rate : (AVRational){25, 1};
+                    if (ost->enc && ost->enc->supported_framerates && !ost->force_fps) {
+                        int idx = av_find_nearest_q_idx(ost->frame_rate, ost->enc->supported_framerates);
+                        ost->frame_rate = ost->enc->supported_framerates[idx];
+                    }
                 }
-                codec->time_base = (AVRational){ost->frame_rate.den, ost->frame_rate.num};
+                if (ost->frame_rate.num) {
+                    codec->time_base = (AVRational){ost->frame_rate.den, ost->frame_rate.num};
+                    video_sync_method = VSYNC_CFR;
+                } else
+                    codec->time_base = ist->st->time_base;
 
 #if CONFIG_AVFILTER
                 if (configure_video_filters(ist, ost)) {
@@ -3146,6 +3170,7 @@ static void add_input_streams(OptionsContext *o, AVFormatContext *ic)
         ist->st = st;
         ist->file_index = nb_input_files;
         ist->discard = 1;
+        st->discard  = AVDISCARD_ALL;
         ist->opts = filter_codec_opts(codec_opts, ist->st->codec->codec_id, ic, st);
 
         ist->ts_scale = 1.0;
@@ -3154,10 +3179,6 @@ static void add_input_streams(OptionsContext *o, AVFormatContext *ic)
         ist->dec = choose_decoder(o, ic, st);
 
         switch (dec->codec_type) {
-        case AVMEDIA_TYPE_AUDIO:
-            if (o->audio_disable)
-                st->discard = AVDISCARD_ALL;
-            break;
         case AVMEDIA_TYPE_VIDEO:
             if (dec->lowres) {
                 dec->flags |= CODEC_FLAG_EMU_EDGE;
@@ -3165,17 +3186,10 @@ static void add_input_streams(OptionsContext *o, AVFormatContext *ic)
                 dec->width  >>= dec->lowres;
             }
 
-            if (o->video_disable)
-                st->discard = AVDISCARD_ALL;
-            else if (video_discard)
-                st->discard = video_discard;
             break;
+        case AVMEDIA_TYPE_AUDIO:
         case AVMEDIA_TYPE_DATA:
-            break;
         case AVMEDIA_TYPE_SUBTITLE:
-            if (o->subtitle_disable)
-                st->discard = AVDISCARD_ALL;
-            break;
         case AVMEDIA_TYPE_ATTACHMENT:
         case AVMEDIA_TYPE_UNKNOWN:
             break;
@@ -3849,6 +3863,7 @@ static void opt_output_file(void *optctx, const char *filename)
             ost->source_index = index;\
             ost->sync_ist     = &input_streams[index];\
             input_streams[index].discard = 0;\
+            input_streams[index].st->discard = AVDISCARD_NONE;\
         }
 
         /* video: highest resolution */
@@ -3912,6 +3927,7 @@ static void opt_output_file(void *optctx, const char *filename)
             ost->sync_ist     = &input_streams[input_files[map->sync_file_index].ist_index +
                                            map->sync_stream_index];
             ist->discard = 0;
+            ist->st->discard = AVDISCARD_NONE;
         }
     }
 
