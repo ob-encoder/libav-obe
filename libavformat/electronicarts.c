@@ -283,6 +283,20 @@ static int process_video_header_vp6(AVFormatContext *s)
     return 1;
 }
 
+static int process_video_header_cmv(AVFormatContext *s)
+{
+    EaDemuxContext *ea = s->priv_data;
+    int fps;
+
+    avio_skip(s->pb, 10);
+    fps = avio_rl16(s->pb);
+    if (fps)
+        ea->time_base = (AVRational){1, fps};
+    ea->video_codec = CODEC_ID_CMV;
+
+    return 0;
+}
+
 /*
  * Process EA file header
  * Returns 1 if the EA file is valid and successfully opened, 0 otherwise
@@ -330,13 +344,12 @@ static int process_ea_header(AVFormatContext *s) {
                 break;
 
             case MVIh_TAG :
-                ea->video_codec = CODEC_ID_CMV;
-                ea->time_base = (AVRational){0,0};
+                err = process_video_header_cmv(s);
                 break;
 
             case kVGT_TAG:
                 ea->video_codec = CODEC_ID_TGV;
-                ea->time_base = (AVRational){0,0};
+                ea->time_base = (AVRational){1, 15};
                 break;
 
             case mTCD_TAG :
@@ -417,9 +430,11 @@ static int ea_read_header(AVFormatContext *s)
         st->codec->codec_type = AVMEDIA_TYPE_VIDEO;
         st->codec->codec_id = ea->video_codec;
         st->codec->codec_tag = 0;  /* no fourcc */
-        st->codec->time_base = ea->time_base;
         st->codec->width = ea->width;
         st->codec->height = ea->height;
+        avpriv_set_pts_info(st, 33, ea->time_base.num, ea->time_base.den);
+        st->r_frame_rate = st->avg_frame_rate = (AVRational){ea->time_base.den,
+                                                             ea->time_base.num};
     }
 
     if (ea->audio_codec) {
