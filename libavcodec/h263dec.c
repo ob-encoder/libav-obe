@@ -556,8 +556,7 @@ retry:
 #if HAVE_MMX
     if (s->codec_id == CODEC_ID_MPEG4 && s->xvid_build>=0 && avctx->idct_algo == FF_IDCT_AUTO && (av_get_cpu_flags() & AV_CPU_FLAG_MMX)) {
         avctx->idct_algo= FF_IDCT_XVIDMMX;
-        avctx->coded_width= 0; // force reinit
-//        ff_dsputil_init(&s->dsp, avctx);
+        ff_dct_common_init(s);
         s->picture_number=0;
     }
 #endif
@@ -571,6 +570,12 @@ retry:
         || s->height != avctx->coded_height) {
         /* H.263 could change picture size any time */
         ParseContext pc= s->parse_context; //FIXME move these demuxng hack to avformat
+
+        if (HAVE_THREADS && (s->avctx->active_thread_type&FF_THREAD_FRAME)) {
+            av_log_missing_feature(s->avctx, "Width/height/bit depth/chroma idc changing with threads is", 0);
+            return -1;   // width / height changed during parallelized decoding
+        }
+
         s->parse_context.buffer=0;
         ff_MPV_common_end(s);
         s->parse_context= pc;
@@ -645,7 +650,7 @@ retry:
     ret = decode_slice(s);
     while(s->mb_y<s->mb_height){
         if(s->msmpeg4_version){
-            if(s->slice_height==0 || s->mb_x!=0 || (s->mb_y%s->slice_height)!=0 || get_bits_count(&s->gb) > s->gb.size_in_bits)
+            if(s->slice_height==0 || s->mb_x!=0 || (s->mb_y%s->slice_height)!=0 || get_bits_left(&s->gb)<0)
                 break;
         }else{
             int prev_x=s->mb_x, prev_y=s->mb_y;

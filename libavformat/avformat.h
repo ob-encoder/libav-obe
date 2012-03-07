@@ -637,11 +637,8 @@ typedef struct AVStream {
         double duration_error[MAX_STD_TIMEBASES];
         int64_t codec_info_duration;
         int nb_decoded_frames;
+        int found_decoder;
     } *info;
-
-    AVPacket cur_pkt;
-    const uint8_t *cur_ptr;
-    int cur_len;
 
     int pts_wrap_bits; /**< number of bits in pts (used for wrapping control) */
 
@@ -922,9 +919,6 @@ typedef struct AVFormatContext {
     struct AVPacketList *packet_buffer;
     struct AVPacketList *packet_buffer_end;
 
-    /* av_read_frame() support */
-    AVStream *cur_st;
-
     /* av_seek_frame() support */
     int64_t data_offset; /**< offset of the first packet */
 
@@ -936,6 +930,11 @@ typedef struct AVFormatContext {
      */
     struct AVPacketList *raw_packet_buffer;
     struct AVPacketList *raw_packet_buffer_end;
+    /**
+     * Packets split by the parser get queued here.
+     */
+    struct AVPacketList *parse_queue;
+    struct AVPacketList *parse_queue_end;
     /**
      * Remaining size available for raw_packet_buffer, in bytes.
      */
