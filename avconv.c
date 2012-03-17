@@ -2015,8 +2015,8 @@ static int transcode_video(InputStream *ist, AVPacket *pkt, int *got_output, int
                                      decoded_frame->pts, decoded_frame->sample_aspect_ratio);
 
         if (!ist->filtered_frame && !(ist->filtered_frame = avcodec_alloc_frame())) {
-            av_free(buffer_to_free);
-            return AVERROR(ENOMEM);
+            ret = AVERROR(ENOMEM);
+            goto fail;
         } else
             avcodec_get_frame_defaults(ist->filtered_frame);
         filtered_frame = ist->filtered_frame;
@@ -2024,11 +2024,12 @@ static int transcode_video(InputStream *ist, AVPacket *pkt, int *got_output, int
         frame_available = avfilter_poll_frame(ost->output_video_filter->inputs[0]);
         while (frame_available) {
             AVRational ist_pts_tb;
-            if (ost->output_video_filter)
-                get_filtered_video_frame(ost->output_video_filter, filtered_frame, &ost->picref, &ist_pts_tb);
-            if (ost->picref)
-                filtered_frame->pts = av_rescale_q(ost->picref->pts, ist_pts_tb, AV_TIME_BASE_Q);
-            if (ost->picref->video && !ost->frame_aspect_ratio)
+            if ((ret = get_filtered_video_frame(ost->output_video_filter,
+                                                filtered_frame, &ost->picref,
+                                                &ist_pts_tb)) < 0)
+                goto fail;
+            filtered_frame->pts = av_rescale_q(ost->picref->pts, ist_pts_tb, AV_TIME_BASE_Q);
+            if (!ost->frame_aspect_ratio)
                 ost->st->codec->sample_aspect_ratio = ost->picref->video->pixel_aspect;
 #else
             filtered_frame = decoded_frame;
@@ -2040,12 +2041,12 @@ static int transcode_video(InputStream *ist, AVPacket *pkt, int *got_output, int
                 do_video_stats(output_files[ost->file_index].ctx, ost, frame_size);
 #if CONFIG_AVFILTER
             frame_available = ost->output_video_filter && avfilter_poll_frame(ost->output_video_filter->inputs[0]);
-            if (ost->picref)
-                avfilter_unref_buffer(ost->picref);
+            avfilter_unref_buffer(ost->picref);
         }
 #endif
     }
 
+fail:
     av_free(buffer_to_free);
     return ret;
 }
@@ -2497,23 +2498,27 @@ static int transcode_init(OutputFile *output_files,
                 snprintf(logfilename, sizeof(logfilename), "%s-%d.log",
                          pass_logfilename_prefix ? pass_logfilename_prefix : DEFAULT_PASS_LOGFILENAME_PREFIX,
                          i);
-                if (codec->flags & CODEC_FLAG_PASS1) {
-                    f = fopen(logfilename, "wb");
-                    if (!f) {
-                        av_log(NULL, AV_LOG_FATAL, "Cannot write log file '%s' for pass-1 encoding: %s\n",
-                               logfilename, strerror(errno));
-                        exit_program(1);
-                    }
-                    ost->logfile = f;
+                if (!strcmp(ost->enc->name, "libx264")) {
+                    av_dict_set(&ost->opts, "stats", logfilename, AV_DICT_DONT_OVERWRITE);
                 } else {
-                    char  *logbuffer;
-                    size_t logbuffer_size;
-                    if (cmdutils_read_file(logfilename, &logbuffer, &logbuffer_size) < 0) {
-                        av_log(NULL, AV_LOG_FATAL, "Error reading log file '%s' for pass-2 encoding\n",
-                               logfilename);
-                        exit_program(1);
+                    if (codec->flags & CODEC_FLAG_PASS1) {
+                        f = fopen(logfilename, "wb");
+                        if (!f) {
+                            av_log(NULL, AV_LOG_FATAL, "Cannot write log file '%s' for pass-1 encoding: %s\n",
+                                   logfilename, strerror(errno));
+                            exit_program(1);
+                        }
+                        ost->logfile = f;
+                    } else {
+                        char  *logbuffer;
+                        size_t logbuffer_size;
+                        if (cmdutils_read_file(logfilename, &logbuffer, &logbuffer_size) < 0) {
+                            av_log(NULL, AV_LOG_FATAL, "Error reading log file '%s' for pass-2 encoding\n",
+                                   logfilename);
+                            exit_program(1);
+                        }
+                        codec->stats_in = logbuffer;
                     }
-                    codec->stats_in = logbuffer;
                 }
             }
         }
