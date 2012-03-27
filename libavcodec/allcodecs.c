@@ -230,9 +230,11 @@ void avcodec_register_all(void)
     REGISTER_DECODER (WNV1, wnv1);
     REGISTER_DECODER (XAN_WC3, xan_wc3);
     REGISTER_DECODER (XAN_WC4, xan_wc4);
+    REGISTER_ENCODER (XBM, xbm);
     REGISTER_DECODER (XL, xl);
     REGISTER_ENCDEC  (XWD, xwd);
     REGISTER_DECODER (YOP, yop);
+    REGISTER_DECODER (ZEROCODEC, zerocodec);
     REGISTER_ENCDEC  (ZLIB, zlib);
     REGISTER_ENCDEC  (ZMBV, zmbv);
 
@@ -279,6 +281,7 @@ void avcodec_register_all(void)
     REGISTER_DECODER (QDM2, qdm2);
     REGISTER_ENCDEC  (RA_144, ra_144);
     REGISTER_DECODER (RA_288, ra_288);
+    REGISTER_DECODER (RALF, ralf);
     REGISTER_DECODER (SHORTEN, shorten);
     REGISTER_DECODER (SIPR, sipr);
     REGISTER_DECODER (SMACKAUD, smackaud);

@@ -329,6 +329,7 @@ library:
     @tab Microsoft audio container used by XAudio 2.
 @item YUV4MPEG pipe             @tab X @tab X
 @item Psygnosis YOP             @tab   @tab X
+@item ZeroCodec Lossless Video  @tab   @tab X
 @end multitable
 
 @code{X} means that encoding (resp. decoding) is supported.
@@ -381,6 +382,8 @@ following image formats are supported:
     @tab YUV, JPEG and some extension is not supported yet.
 @item Truevision Targa  @tab X @tab X
     @tab Targa (.TGA) image format
+@item XBM  @tab X @tab
+    @tab X BitMap image format
 @item XWD  @tab X @tab X
     @tab X Window Dump image format
 @end multitable
@@ -750,6 +753,7 @@ following image formats are supported:
     @tab Real 28800 bit/s codec
 @item RealAudio 3.0 (dnet)   @tab IX  @tab  X
     @tab Real low bitrate AC-3 codec
+@item RealAudio Lossless     @tab     @tab  X
 @item RealAudio SIPR / ACELP.NET @tab     @tab  X
 @item Shorten                @tab     @tab  X
 @item Sierra VMD audio       @tab     @tab  X

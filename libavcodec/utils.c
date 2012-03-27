@@ -392,11 +392,6 @@ static int video_get_buffer(AVCodecContext *s, AVFrame *pic)
     buf = &avci->buffer[avci->buffer_count];
 
     if(buf->base[0] && (buf->width != w || buf->height != h || buf->pix_fmt != s->pix_fmt)){
-        if(s->active_thread_type&FF_THREAD_FRAME) {
-            av_log_missing_feature(s, "Width/height changing with frame threads is", 0);
-            return -1;
-        }
-
         for (i = 0; i < AV_NUM_DATA_POINTERS; i++) {
             av_freep(&buf->base[i]);
             buf->data[i]= NULL;
@@ -480,6 +475,10 @@ static int video_get_buffer(AVCodecContext *s, AVFrame *pic)
     }
     pic->extended_data = pic->data;
     avci->buffer_count++;
+    pic->width  = buf->width;
+    pic->height = buf->height;
+    pic->format = buf->pix_fmt;
+    pic->sample_aspect_ratio = s->sample_aspect_ratio;
 
     if(s->pkt) pic->pkt_pts= s->pkt->pts;
     else       pic->pkt_pts= AV_NOPTS_VALUE;
@@ -960,8 +959,15 @@ int attribute_align_arg avcodec_encode_audio2(AVCodecContext *avctx,
         if (fs_tmp)
             avctx->frame_size = fs_tmp;
     }
-    if (!ret)
+    if (!ret) {
+        if (!user_packet && avpkt->data) {
+            uint8_t *new_data = av_realloc(avpkt->data, avpkt->size);
+            if (new_data)
+                avpkt->data = new_data;
+        }
+
         avctx->frame_number++;
+    }
 
     if (ret < 0 || !*got_packet_ptr)
         av_free_packet(avpkt);
@@ -1859,7 +1865,7 @@ int av_get_audio_frame_duration(AVCodecContext *avctx, int frame_bytes)
                 case CODEC_ID_ADPCM_IMA_WAV:
                     return blocks * (1 + (ba - 4 * ch) / (4 * ch) * 8);
                 case CODEC_ID_ADPCM_IMA_DK3:
-                    return blocks * (((ba - 16) * 8 / 3) / ch);
+                    return blocks * (((ba - 16) * 2 / 3 * 4) / ch);
                 case CODEC_ID_ADPCM_IMA_DK4:
                     return blocks * (1 + (ba - 4 * ch) * 2 / ch);
                 case CODEC_ID_ADPCM_MS:
