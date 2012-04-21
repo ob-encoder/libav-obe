@@ -292,7 +292,7 @@ static int audio_get_buffer(AVCodecContext *avctx, AVFrame *frame)
 
     buf_size = av_samples_get_buffer_size(NULL, avctx->channels,
                                           frame->nb_samples, avctx->sample_fmt,
-                                          32);
+                                          0);
     if (buf_size < 0)
         return AVERROR(EINVAL);
 
@@ -334,7 +334,7 @@ static int audio_get_buffer(AVCodecContext *avctx, AVFrame *frame)
         }
         if ((ret = avcodec_fill_audio_frame(frame, avctx->channels,
                                             avctx->sample_fmt, buf->data[0],
-                                            buf->audio_data_size, 32)))
+                                            buf->audio_data_size, 0)))
             return ret;
 
         if (frame->extended_data == frame->data)
@@ -810,6 +810,15 @@ int attribute_align_arg avcodec_open2(AVCodecContext *avctx, AVCodec *codec, AVD
             goto free_and_end;
         }
     }
+
+    if (av_codec_is_decoder(avctx->codec)) {
+        /* validate channel layout from the decoder */
+        if (avctx->channel_layout &&
+            av_get_channel_layout_nb_channels(avctx->channel_layout) != avctx->channels) {
+            av_log(avctx, AV_LOG_WARNING, "channel layout does not match number of channels\n");
+            avctx->channel_layout = 0;
+        }
+    }
 end:
     entangled_thread_counter--;
 
@@ -960,7 +969,7 @@ int attribute_align_arg avcodec_encode_audio2(AVCodecContext *avctx,
             avctx->frame_size = fs_tmp;
     }
     if (!ret) {
-        if (!user_packet && avpkt->data) {
+        if (!user_packet && avpkt->size) {
             uint8_t *new_data = av_realloc(avpkt->data, avpkt->size);
             if (new_data)
                 avpkt->data = new_data;
@@ -1123,7 +1132,7 @@ int attribute_align_arg avcodec_encode_video2(AVCodecContext *avctx,
         else if (!(avctx->codec->capabilities & CODEC_CAP_DELAY))
             avpkt->pts = avpkt->dts = frame->pts;
 
-        if (!user_packet && avpkt->data) {
+        if (!user_packet && avpkt->size) {
             uint8_t *new_data = av_realloc(avpkt->data, avpkt->size);
             if (new_data)
                 avpkt->data = new_data;
@@ -1489,7 +1498,9 @@ void avcodec_string(char *buf, int buf_size, AVCodecContext *enc, int encode)
     int bitrate;
     AVRational display_aspect_ratio;
 
-    if (encode)
+    if (enc->codec)
+        p = enc->codec;
+    else if (encode)
         p = avcodec_find_encoder(enc->codec_id);
     else
         p = avcodec_find_decoder(enc->codec_id);

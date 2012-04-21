@@ -157,8 +157,7 @@ static void rtsp_parse_range_npt(const char *p, int64_t *start, int64_t *end)
 
 static int get_sockaddr(const char *buf, struct sockaddr_storage *sock)
 {
-    struct addrinfo hints, *ai = NULL;
-    memset(&hints, 0, sizeof(hints));
+    struct addrinfo hints = { 0 }, *ai = NULL;
     hints.ai_flags = AI_NUMERICHOST;
     if (getaddrinfo(buf, NULL, &hints, &ai))
         return -1;
@@ -375,6 +374,10 @@ static void sdp_parse_line(AVFormatContext *s, SDPParseState *s1,
 
         if (!strcmp(ff_rtp_enc_name(rtsp_st->sdp_payload_type), "MP2T")) {
             /* no corresponding stream */
+        } else if (rt->server_type == RTSP_SERVER_WMS &&
+                   codec_type == AVMEDIA_TYPE_DATA) {
+            /* RTX stream, a stream that carries all the other actual
+             * audio/video streams. Don't expose this to the callers. */
         } else {
             st = avformat_new_stream(s, NULL);
             if (!st)
@@ -431,9 +434,11 @@ static void sdp_parse_line(AVFormatContext *s, SDPParseState *s1,
             /* NOTE: rtpmap is only supported AFTER the 'm=' tag */
             get_word(buf1, sizeof(buf1), &p);
             payload_type = atoi(buf1);
-            st = s->streams[s->nb_streams - 1];
             rtsp_st = rt->rtsp_streams[rt->nb_rtsp_streams - 1];
-            sdp_parse_rtpmap(s, st, rtsp_st, payload_type, p);
+            if (rtsp_st->stream_index >= 0) {
+                st = s->streams[rtsp_st->stream_index];
+                sdp_parse_rtpmap(s, st, rtsp_st, payload_type, p);
+            }
         } else if (av_strstart(p, "fmtp:", &p) ||
                    av_strstart(p, "framesize:", &p)) {
             /* NOTE: fmtp is only supported AFTER the 'a=rtpmap:xxx' tag */
@@ -468,14 +473,15 @@ static void sdp_parse_line(AVFormatContext *s, SDPParseState *s1,
             if (rt->server_type == RTSP_SERVER_WMS)
                 ff_wms_parse_sdp_a_line(s, p);
             if (s->nb_streams > 0) {
-                if (rt->server_type == RTSP_SERVER_REAL)
-                    ff_real_parse_sdp_a_line(s, s->nb_streams - 1, p);
-
                 rtsp_st = rt->rtsp_streams[rt->nb_rtsp_streams - 1];
+
+                if (rt->server_type == RTSP_SERVER_REAL)
+                    ff_real_parse_sdp_a_line(s, rtsp_st->stream_index, p);
+
                 if (rtsp_st->dynamic_handler &&
                     rtsp_st->dynamic_handler->parse_sdp_a_line)
                     rtsp_st->dynamic_handler->parse_sdp_a_line(s,
-                        s->nb_streams - 1,
+                        rtsp_st->stream_index,
                         rtsp_st->dynamic_protocol_context, buf);
             }
         }
@@ -497,9 +503,8 @@ int ff_sdp_parse(AVFormatContext *s, const char *content)
      * The Vorbis FMTP line can be up to 16KB - see xiph_parse_sdp_line
      * in rtpdec_xiph.c. */
     char buf[16384], *q;
-    SDPParseState sdp_parse_state, *s1 = &sdp_parse_state;
+    SDPParseState sdp_parse_state = { { 0 } }, *s1 = &sdp_parse_state;
 
-    memset(s1, 0, sizeof(SDPParseState));
     p = content;
     for (;;) {
         p += strspn(p, SPACE_CHARS);
@@ -1252,8 +1257,9 @@ int ff_rtsp_make_setup_request(AVFormatContext *s, const char *host, int port,
              * UDP. When trying to set it up for TCP streams, the server
              * will return an error. Therefore, we skip those streams. */
             if (rt->server_type == RTSP_SERVER_WMS &&
-                s->streams[rtsp_st->stream_index]->codec->codec_type ==
-                    AVMEDIA_TYPE_DATA)
+                (rtsp_st->stream_index < 0 ||
+                 s->streams[rtsp_st->stream_index]->codec->codec_type ==
+                    AVMEDIA_TYPE_DATA))
                 continue;
             snprintf(transport, sizeof(transport) - 1,
                      "%s/TCP;", trans_pref);
@@ -1385,7 +1391,7 @@ int ff_rtsp_make_setup_request(AVFormatContext *s, const char *host, int port,
             goto fail;
     }
 
-    if (reply->timeout > 0)
+    if (rt->nb_rtsp_streams && reply->timeout > 0)
         rt->timeout = reply->timeout;
 
     if (rt->server_type == RTSP_SERVER_REAL)
@@ -1955,7 +1961,7 @@ static int rtp_read_header(AVFormatContext *s)
     int ret, port;
     URLContext* in = NULL;
     int payload_type;
-    AVCodecContext codec;
+    AVCodecContext codec = { 0 };
     struct sockaddr_storage addr;
     AVIOContext pb;
     socklen_t addrlen = sizeof(addr);
@@ -1996,7 +2002,6 @@ static int rtp_read_header(AVFormatContext *s)
     ffurl_close(in);
     in = NULL;
 
-    memset(&codec, 0, sizeof(codec));
     if (ff_rtp_get_codec_info(&codec, payload_type)) {
         av_log(s, AV_LOG_ERROR, "Unable to receive RTP payload type %d "
                                 "without an SDP file describing it\n",

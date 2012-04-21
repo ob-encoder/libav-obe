@@ -45,6 +45,8 @@
 // #undef NDEBUG
 #include <assert.h>
 
+const uint16_t ff_h264_mb_sizes[4] = { 256, 384, 512, 768 };
+
 static const uint8_t rem6[QP_MAX_NUM + 1] = {
     0, 1, 2, 3, 4, 5, 0, 1, 2, 3, 4, 5, 0, 1, 2, 3, 4, 5, 0, 1, 2,
     3, 4, 5, 0, 1, 2, 3, 4, 5, 0, 1, 2, 3, 4, 5, 0, 1, 2, 3, 4, 5,
@@ -262,7 +264,7 @@ nsc:
  * Identify the exact end of the bitstream
  * @return the length of the trailing, or 0 if damaged
  */
-static int ff_h264_decode_rbsp_trailing(H264Context *h, const uint8_t *src)
+static int decode_rbsp_trailing(H264Context *h, const uint8_t *src)
 {
     int v = *src;
     int r;
@@ -2141,7 +2143,8 @@ static av_always_inline void hl_decode_mb_internal(H264Context *h, int simple,
             const int bit_depth = h->sps.bit_depth_luma;
             int j;
             GetBitContext gb;
-            init_get_bits(&gb, (uint8_t *)h->mb, 384 * bit_depth);
+            init_get_bits(&gb, (uint8_t *)h->mb,
+                          ff_h264_mb_sizes[h->sps.chroma_format_idc] * bit_depth);
 
             for (i = 0; i < 16; i++) {
                 uint16_t *tmp_y = (uint16_t *)(dest_y + i * linesize);
@@ -2175,7 +2178,7 @@ static av_always_inline void hl_decode_mb_internal(H264Context *h, int simple,
             }
         } else {
             for (i = 0; i < 16; i++)
-                memcpy(dest_y + i * linesize, h->mb + i * 8, 16);
+                memcpy(dest_y + i * linesize, (uint8_t *)h->mb + i * 16, 16);
             if (simple || !CONFIG_GRAY || !(s->flags & CODEC_FLAG_GRAY)) {
                 if (!h->sps.chroma_format_idc) {
                     for (i = 0; i < block_h; i++) {
@@ -2183,9 +2186,11 @@ static av_always_inline void hl_decode_mb_internal(H264Context *h, int simple,
                         memset(dest_cr + i * uvlinesize, 128, 8);
                     }
                 } else {
+                    uint8_t *src_cb = (uint8_t *)h->mb + 256;
+                    uint8_t *src_cr = (uint8_t *)h->mb + 256 + block_h * 8;
                     for (i = 0; i < block_h; i++) {
-                        memcpy(dest_cb + i * uvlinesize, h->mb + 128 + i * 4, 8);
-                        memcpy(dest_cr + i * uvlinesize, h->mb + 160 + i * 4, 8);
+                        memcpy(dest_cb + i * uvlinesize, src_cb + i * 8, 8);
+                        memcpy(dest_cr + i * uvlinesize, src_cr + i * 8, 8);
                     }
                 }
             }
@@ -2374,7 +2379,8 @@ static av_always_inline void hl_decode_mb_444_internal(H264Context *h,
         } else {
             for (p = 0; p < plane_count; p++)
                 for (i = 0; i < 16; i++)
-                    memcpy(dest[p] + i * linesize, h->mb + p * 128 + i * 8, 16);
+                    memcpy(dest[p] + i * linesize,
+                           (uint8_t *)h->mb + p * 256 + i * 16, 16);
         }
     } else {
         if (IS_INTRA(mb_type)) {
@@ -2424,17 +2430,17 @@ hl_decode_mb_simple(1, 16)
 /**
  * Process a macroblock; this handles edge cases, such as interlacing.
  */
-static void av_noinline hl_decode_mb_complex(H264Context *h)
+static av_noinline void hl_decode_mb_complex(H264Context *h)
 {
     hl_decode_mb_internal(h, 0, h->pixel_shift);
 }
 
-static void av_noinline hl_decode_mb_444_complex(H264Context *h)
+static av_noinline void hl_decode_mb_444_complex(H264Context *h)
 {
     hl_decode_mb_444_internal(h, 0, h->pixel_shift);
 }
 
-static void av_noinline hl_decode_mb_444_simple(H264Context *h)
+static av_noinline void hl_decode_mb_444_simple(H264Context *h)
 {
     hl_decode_mb_444_internal(h, 1, 0);
 }
@@ -4225,7 +4231,7 @@ static int decode_nal_units(H264Context *h, const uint8_t *buf, int buf_size)
                     dst_length--;
             bit_length = !dst_length ? 0
                                      : (8 * dst_length -
-                                        ff_h264_decode_rbsp_trailing(h, ptr + dst_length - 1));
+                                        decode_rbsp_trailing(h, ptr + dst_length - 1));
 
             if (s->avctx->debug & FF_DEBUG_STARTCODE)
                 av_log(h->s.avctx, AV_LOG_DEBUG,
@@ -4559,7 +4565,7 @@ av_cold void ff_h264_free_context(H264Context *h)
         av_freep(h->pps_buffers + i);
 }
 
-av_cold int ff_h264_decode_end(AVCodecContext *avctx)
+static av_cold int h264_decode_end(AVCodecContext *avctx)
 {
     H264Context *h    = avctx->priv_data;
     MpegEncContext *s = &h->s;
@@ -4596,7 +4602,7 @@ AVCodec ff_h264_decoder = {
     .id                    = CODEC_ID_H264,
     .priv_data_size        = sizeof(H264Context),
     .init                  = ff_h264_decode_init,
-    .close                 = ff_h264_decode_end,
+    .close                 = h264_decode_end,
     .decode                = decode_frame,
     .capabilities          = /*CODEC_CAP_DRAW_HORIZ_BAND |*/ CODEC_CAP_DR1 |
                              CODEC_CAP_DELAY | CODEC_CAP_SLICE_THREADS |
@@ -4615,7 +4621,7 @@ AVCodec ff_h264_vdpau_decoder = {
     .id             = CODEC_ID_H264,
     .priv_data_size = sizeof(H264Context),
     .init           = ff_h264_decode_init,
-    .close          = ff_h264_decode_end,
+    .close          = h264_decode_end,
     .decode         = decode_frame,
     .capabilities   = CODEC_CAP_DR1 | CODEC_CAP_DELAY | CODEC_CAP_HWACCEL_VDPAU,
     .flush          = flush_dpb,

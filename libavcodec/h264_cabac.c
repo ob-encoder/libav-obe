@@ -1630,6 +1630,7 @@ decode_cabac_residual_internal(H264Context *h, DCTELEM *block,
     cc.range     = h->cabac.range;
     cc.low       = h->cabac.low;
     cc.bytestream= h->cabac.bytestream;
+    cc.bytestream_end = h->cabac.bytestream_end;
 #else
 #define CC &h->cabac
 #endif
@@ -1982,8 +1983,8 @@ decode_intra_mb:
     h->slice_table[ mb_xy ]= h->slice_num;
 
     if(IS_INTRA_PCM(mb_type)) {
-        static const uint16_t mb_sizes[4] = {256,384,512,768};
-        const int mb_size = mb_sizes[h->sps.chroma_format_idc]*h->sps.bit_depth_luma >> 3;
+        const int mb_size = ff_h264_mb_sizes[h->sps.chroma_format_idc] *
+                            h->sps.bit_depth_luma >> 3;
         const uint8_t *ptr;
 
         // We assume these blocks are very rare so we do not optimize it.

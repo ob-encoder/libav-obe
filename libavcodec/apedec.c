@@ -421,9 +421,12 @@ static inline int ape_decode_value(APEContext *ctx, APERice *rice)
 
         if (tmpk <= 16)
             x = range_decode_bits(ctx, tmpk);
-        else {
+        else if (tmpk <= 32) {
             x = range_decode_bits(ctx, 16);
             x |= (range_decode_bits(ctx, tmpk - 16) << 16);
+        } else {
+            av_log(ctx->avctx, AV_LOG_ERROR, "Too many bits: %d\n", tmpk);
+            return AVERROR_INVALIDDATA;
         }
         x += overflow << tmpk;
     } else {
@@ -990,7 +993,7 @@ AVCodec ff_ape_decoder = {
     .close          = ape_decode_close,
     .decode         = ape_decode_frame,
     .capabilities   = CODEC_CAP_SUBFRAMES | CODEC_CAP_DELAY | CODEC_CAP_DR1,
-    .flush = ape_flush,
-    .long_name = NULL_IF_CONFIG_SMALL("Monkey's Audio"),
+    .flush          = ape_flush,
+    .long_name      = NULL_IF_CONFIG_SMALL("Monkey's Audio"),
     .priv_class     = &ape_decoder_class,
 };

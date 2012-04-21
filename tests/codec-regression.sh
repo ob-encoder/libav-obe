@@ -311,16 +311,6 @@ do_audio_encoding ac3.ac3 "-vn -acodec ac3_fixed"
 #$tiny_psnr $pcm_dst $pcm_ref 2 1024
 fi
 
-if [ -n "$do_g722" ] ; then
-do_audio_encoding g722.wav "-b 64k -ac 1 -ar 16000 -acodec g722"
-do_audio_decoding
-fi
-
-if [ -n "$do_g726" ] ; then
-do_audio_encoding g726.wav "-b 32k -ac 1 -ar 8000 -acodec g726"
-do_audio_decoding
-fi
-
 if [ -n "$do_adpcm_adx" ] ; then
 do_audio_encoding adpcm_adx.adx "-acodec adpcm_adx"
 do_audio_decoding
@@ -428,7 +418,4 @@ do_audio_enc_dec au  dbl pcm_f64be
 fi
 if [ -n "$do_pcm_f64le" ] ; then
 do_audio_enc_dec wav dbl pcm_f64le
-fi
-if [ -n "$do_pcm_s24daud" ] ; then
-do_audio_enc_dec 302 s16 pcm_s24daud "-ac 6 -ar 96000"
 fi

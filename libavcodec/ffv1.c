@@ -322,7 +322,7 @@ do{\
 #undef put_rac
 }
 
-static void av_noinline put_symbol(RangeCoder *c, uint8_t *state, int v, int is_signed){
+static av_noinline void put_symbol(RangeCoder *c, uint8_t *state, int v, int is_signed){
     put_symbol_inline(c, state, v, is_signed, NULL, NULL);
 }
 
@@ -346,7 +346,7 @@ static inline av_flatten int get_symbol_inline(RangeCoder *c, uint8_t *state, in
     }
 }
 
-static int av_noinline get_symbol(RangeCoder *c, uint8_t *state, int is_signed){
+static av_noinline int get_symbol(RangeCoder *c, uint8_t *state, int is_signed){
     return get_symbol_inline(c, state, is_signed);
 }
 
@@ -438,7 +438,7 @@ static inline int get_vlc_symbol(GetBitContext *gb, VlcState * const state, int 
 
 #if CONFIG_FFV1_ENCODER
 static av_always_inline int encode_line(FFV1Context *s, int w,
-                                        int16_t *sample[2],
+                                        int16_t *sample[3],
                                         int plane_index, int bits)
 {
     PlaneContext * const p= &s->plane[plane_index];
@@ -1743,8 +1743,9 @@ AVCodec ff_ffv1_decoder = {
     .init           = decode_init,
     .close          = common_end,
     .decode         = decode_frame,
-    .capabilities   = CODEC_CAP_DR1 /*| CODEC_CAP_DRAW_HORIZ_BAND*/ | CODEC_CAP_SLICE_THREADS,
-    .long_name= NULL_IF_CONFIG_SMALL("FFmpeg video codec #1"),
+    .capabilities   = CODEC_CAP_DR1 /*| CODEC_CAP_DRAW_HORIZ_BAND*/ |
+                      CODEC_CAP_SLICE_THREADS,
+    .long_name      = NULL_IF_CONFIG_SMALL("FFmpeg video codec #1"),
 };
 
 #if CONFIG_FFV1_ENCODER
@@ -1756,8 +1757,12 @@ AVCodec ff_ffv1_encoder = {
     .init           = encode_init,
     .encode2        = encode_frame,
     .close          = common_end,
-    .capabilities = CODEC_CAP_SLICE_THREADS,
-    .pix_fmts= (const enum PixelFormat[]){PIX_FMT_YUV420P, PIX_FMT_YUV444P, PIX_FMT_YUV422P, PIX_FMT_YUV411P, PIX_FMT_YUV410P, PIX_FMT_RGB32, PIX_FMT_YUV420P16, PIX_FMT_YUV422P16, PIX_FMT_YUV444P16, PIX_FMT_NONE},
-    .long_name= NULL_IF_CONFIG_SMALL("FFmpeg video codec #1"),
+    .capabilities   = CODEC_CAP_SLICE_THREADS,
+    .pix_fmts       = (const enum PixelFormat[]){
+        PIX_FMT_YUV420P, PIX_FMT_YUV444P, PIX_FMT_YUV422P, PIX_FMT_YUV411P,
+        PIX_FMT_YUV410P, PIX_FMT_RGB32, PIX_FMT_YUV420P16, PIX_FMT_YUV422P16,
+        PIX_FMT_YUV444P16, PIX_FMT_NONE
+    },
+    .long_name      = NULL_IF_CONFIG_SMALL("FFmpeg video codec #1"),
 };
 #endif

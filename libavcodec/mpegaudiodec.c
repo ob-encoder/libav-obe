@@ -304,11 +304,8 @@ static av_cold void decode_init_static(void)
     for (i = 1; i < 16; i++) {
         const HuffTable *h = &mpa_huff_tables[i];
         int xsize, x, y;
-        uint8_t  tmp_bits [512];
-        uint16_t tmp_codes[512];
-
-        memset(tmp_bits , 0, sizeof(tmp_bits ));
-        memset(tmp_codes, 0, sizeof(tmp_codes));
+        uint8_t  tmp_bits [512] = { 0 };
+        uint16_t tmp_codes[512] = { 0 };
 
         xsize = h->xsize;
 
@@ -1536,7 +1533,7 @@ static int mp_decode_layer3(MPADecodeContext *s)
             huffman_decode(s, g, exponents, bits_pos + g->part2_3_length);
         } /* ch */
 
-        if (s->nb_channels == 2)
+        if (s->mode == MPA_JSTEREO)
             compute_stereo(s, &s->granules[0][gr], &s->granules[1][gr]);
 
         for (ch = 0; ch < s->nb_channels; ch++) {
@@ -1736,6 +1733,10 @@ static int decode_frame_adu(AVCodecContext *avctx, void *data,
     s->frame_size = len;
 
     out_size = mp_decode_frame(s, NULL, buf, buf_size);
+    if (out_size < 0) {
+        av_log(avctx, AV_LOG_ERROR, "Error while decoding MPEG audio frame.\n");
+        return AVERROR_INVALIDDATA;
+    }
 
     *got_frame_ptr   = 1;
     *(AVFrame *)data = s->frame;

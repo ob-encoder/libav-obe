@@ -387,6 +387,7 @@ static int mov_read_dref(MOVContext *c, AVIOContext *pb, MOVAtom atom)
     entries = avio_rb32(pb);
     if (entries >= UINT_MAX / sizeof(*sc->drefs))
         return AVERROR_INVALIDDATA;
+    av_free(sc->drefs);
     sc->drefs = av_mallocz(entries * sizeof(*sc->drefs));
     if (!sc->drefs)
         return AVERROR(ENOMEM);
@@ -1534,7 +1535,10 @@ static int mov_read_stss(MOVContext *c, AVIOContext *pb, MOVAtom atom)
     av_dlog(c->fc, "keyframe_count = %d\n", entries);
 
     if (!entries)
+    {
+        sc->keyframe_absent = 1;
         return 0;
+    }
     if (entries >= UINT_MAX / sizeof(int))
         return AVERROR_INVALIDDATA;
     sc->keyframes = av_malloc(entries * sizeof(int));
@@ -1727,6 +1731,7 @@ static void mov_build_index(MOVContext *mov, AVStream *st)
     unsigned int stps_index = 0;
     unsigned int i, j;
     uint64_t stream_size = 0;
+    AVIndexEntry *mem;
 
     /* adjust first dts according to edit list */
     if (sc->time_offset && mov->time_scale > 0) {
@@ -1755,12 +1760,13 @@ static void mov_build_index(MOVContext *mov, AVStream *st)
 
         if (!sc->sample_count)
             return;
-        if (sc->sample_count >= UINT_MAX / sizeof(*st->index_entries))
+        if (sc->sample_count >= UINT_MAX / sizeof(*st->index_entries) - st->nb_index_entries)
             return;
-        st->index_entries = av_malloc(sc->sample_count*sizeof(*st->index_entries));
-        if (!st->index_entries)
+        mem = av_realloc(st->index_entries, (st->nb_index_entries + sc->sample_count) * sizeof(*st->index_entries));
+        if (!mem)
             return;
-        st->index_entries_allocated_size = sc->sample_count*sizeof(*st->index_entries);
+        st->index_entries = mem;
+        st->index_entries_allocated_size = (st->nb_index_entries + sc->sample_count) * sizeof(*st->index_entries);
 
         for (i = 0; i < sc->chunk_count; i++) {
             current_offset = sc->chunk_offsets[i];
@@ -1774,7 +1780,7 @@ static void mov_build_index(MOVContext *mov, AVStream *st)
                     return;
                 }
 
-                if (!sc->keyframe_count || current_sample+key_off == sc->keyframes[stss_index]) {
+                if (!sc->keyframe_absent && (!sc->keyframe_count || current_sample+key_off == sc->keyframes[stss_index])) {
                     keyframe = 1;
                     if (stss_index + 1 < sc->keyframe_count)
                         stss_index++;
@@ -1844,12 +1850,13 @@ static void mov_build_index(MOVContext *mov, AVStream *st)
         }
 
         av_dlog(mov->fc, "chunk count %d\n", total);
-        if (total >= UINT_MAX / sizeof(*st->index_entries))
+        if (total >= UINT_MAX / sizeof(*st->index_entries) - st->nb_index_entries)
             return;
-        st->index_entries = av_malloc(total*sizeof(*st->index_entries));
-        if (!st->index_entries)
+        mem = av_realloc(st->index_entries, (st->nb_index_entries + total) * sizeof(*st->index_entries));
+        if (!mem)
             return;
-        st->index_entries_allocated_size = total*sizeof(*st->index_entries);
+        st->index_entries = mem;
+        st->index_entries_allocated_size = (st->nb_index_entries + total) * sizeof(*st->index_entries);
 
         // populate index
         for (i = 0; i < sc->chunk_count; i++) {
@@ -2587,6 +2594,39 @@ finish:
     avio_seek(sc->pb, cur_pos, SEEK_SET);
 }
 
+static int mov_read_close(AVFormatContext *s)
+{
+    MOVContext *mov = s->priv_data;
+    int i, j;
+
+    for (i = 0; i < s->nb_streams; i++) {
+        AVStream *st = s->streams[i];
+        MOVStreamContext *sc = st->priv_data;
+
+        av_freep(&sc->ctts_data);
+        for (j = 0; j < sc->drefs_count; j++) {
+            av_freep(&sc->drefs[j].path);
+            av_freep(&sc->drefs[j].dir);
+        }
+        av_freep(&sc->drefs);
+        if (sc->pb && sc->pb != s->pb)
+            avio_close(sc->pb);
+    }
+
+    if (mov->dv_demux) {
+        for (i = 0; i < mov->dv_fctx->nb_streams; i++) {
+            av_freep(&mov->dv_fctx->streams[i]->codec);
+            av_freep(&mov->dv_fctx->streams[i]);
+        }
+        av_freep(&mov->dv_fctx);
+        av_freep(&mov->dv_demux);
+    }
+
+    av_freep(&mov->trex_data);
+
+    return 0;
+}
+
 static int mov_read_header(AVFormatContext *s)
 {
     MOVContext *mov = s->priv_data;
@@ -2604,10 +2644,12 @@ static int mov_read_header(AVFormatContext *s)
     /* check MOV header */
     if ((err = mov_read_default(mov, pb, atom)) < 0) {
         av_log(s, AV_LOG_ERROR, "error reading header: %d\n", err);
+        mov_read_close(s);
         return err;
     }
     if (!mov->found_moov) {
         av_log(s, AV_LOG_ERROR, "moov atom not found\n");
+        mov_read_close(s);
         return AVERROR_INVALIDDATA;
     }
     av_dlog(mov->fc, "on_parse_exit_offset=%"PRId64"\n", avio_tell(pb));
@@ -2797,39 +2839,6 @@ static int mov_read_seek(AVFormatContext *s, int stream_index, int64_t sample_ti
         timestamp = av_rescale_q(seek_timestamp, s->streams[stream_index]->time_base, st->time_base);
         mov_seek_stream(s, st, timestamp, flags);
     }
-    return 0;
-}
-
-static int mov_read_close(AVFormatContext *s)
-{
-    MOVContext *mov = s->priv_data;
-    int i, j;
-
-    for (i = 0; i < s->nb_streams; i++) {
-        AVStream *st = s->streams[i];
-        MOVStreamContext *sc = st->priv_data;
-
-        av_freep(&sc->ctts_data);
-        for (j = 0; j < sc->drefs_count; j++) {
-            av_freep(&sc->drefs[j].path);
-            av_freep(&sc->drefs[j].dir);
-        }
-        av_freep(&sc->drefs);
-        if (sc->pb && sc->pb != s->pb)
-            avio_close(sc->pb);
-    }
-
-    if (mov->dv_demux) {
-        for (i = 0; i < mov->dv_fctx->nb_streams; i++) {
-            av_freep(&mov->dv_fctx->streams[i]->codec);
-            av_freep(&mov->dv_fctx->streams[i]);
-        }
-        av_freep(&mov->dv_fctx);
-        av_freep(&mov->dv_demux);
-    }
-
-    av_freep(&mov->trex_data);
-
     return 0;
 }
 

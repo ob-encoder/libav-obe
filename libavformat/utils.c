@@ -1823,6 +1823,8 @@ static int has_duration(AVFormatContext *ic)
         if (st->duration != AV_NOPTS_VALUE)
             return 1;
     }
+    if (ic->duration)
+        return 1;
     return 0;
 }
 
@@ -2306,7 +2308,9 @@ int avformat_find_stream_info(AVFormatContext *ic, AVDictionary **options)
                 break;
             if(st->parser && st->parser->parser->split && !st->codec->extradata)
                 break;
-            if(st->first_dts == AV_NOPTS_VALUE)
+            if (st->first_dts == AV_NOPTS_VALUE &&
+                (st->codec->codec_type == AVMEDIA_TYPE_VIDEO ||
+                 st->codec->codec_type == AVMEDIA_TYPE_AUDIO))
                 break;
         }
         if (i == ic->nb_streams) {
@@ -3668,7 +3672,7 @@ int ff_url_join(char *str, int size, const char *proto,
                 int port, const char *fmt, ...)
 {
 #if CONFIG_NETWORK
-    struct addrinfo hints, *ai;
+    struct addrinfo hints = { 0 }, *ai;
 #endif
 
     str[0] = '\0';
@@ -3679,7 +3683,6 @@ int ff_url_join(char *str, int size, const char *proto,
 #if CONFIG_NETWORK && defined(AF_INET6)
     /* Determine if hostname is a numerical IPv6 address,
      * properly escape it within [] in that case. */
-    memset(&hints, 0, sizeof(hints));
     hints.ai_flags = AI_NUMERICHOST;
     if (!getaddrinfo(hostname, NULL, &hints, &ai)) {
         if (ai->ai_family == AF_INET6) {

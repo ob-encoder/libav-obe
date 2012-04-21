@@ -12,6 +12,28 @@ libavutil:   2011-04-18
 
 API changes, most recent first:
 
+2012-xx-xx - xxxxxxx - lavu 51.28.0 - audio_fifo.h
+  Add audio FIFO functions:
+    av_audio_fifo_free()
+    av_audio_fifo_alloc()
+    av_audio_fifo_realloc()
+    av_audio_fifo_write()
+    av_audio_fifo_read()
+    av_audio_fifo_drain()
+    av_audio_fifo_reset()
+    av_audio_fifo_size()
+    av_audio_fifo_space()
+
+2012-xx-xx - xxxxxxx - lavfi 2.16.0 - avfiltergraph.h
+  Add avfilter_graph_parse2(), avfilter_inout_alloc() and
+  avfilter_inout_free() functions.
+
+2012-xx-xx - xxxxxxx - lavu 51.27.0 - samplefmt.h
+  Add av_get_packed_sample_fmt() and av_get_planar_sample_fmt()
+
+2012-xx-xx - xxxxxxx - lavu 51.26.0 - audioconvert.h
+  Add av_get_default_channel_layout()
+
 2012-03-06 - 4d851f8 - lavu 51.25.0 - cpu.h
   Add av_set_cpu_flags_mask().
 

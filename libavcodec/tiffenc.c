@@ -74,7 +74,7 @@ typedef struct TiffEncoderContext {
  * @param need Needed bytes
  * @return 0 - ok, 1 - no free space
  */
-inline static int check_size(TiffEncoderContext * s, uint64_t need)
+static inline int check_size(TiffEncoderContext * s, uint64_t need)
 {
     if (s->buf_size < *s->buf - s->buf_start + need) {
         *s->buf = s->buf_start + s->buf_size + 1;
@@ -472,13 +472,13 @@ AVCodec ff_tiff_encoder = {
     .id             = CODEC_ID_TIFF,
     .priv_data_size = sizeof(TiffEncoderContext),
     .encode2        = encode_frame,
-    .pix_fmts =
-        (const enum PixelFormat[]) {PIX_FMT_RGB24, PIX_FMT_PAL8, PIX_FMT_GRAY8,
-                              PIX_FMT_MONOBLACK, PIX_FMT_MONOWHITE,
-                              PIX_FMT_YUV420P, PIX_FMT_YUV422P,
-                              PIX_FMT_YUV444P, PIX_FMT_YUV410P,
-                              PIX_FMT_YUV411P,
-                              PIX_FMT_NONE},
-    .long_name = NULL_IF_CONFIG_SMALL("TIFF image"),
+    .pix_fmts       = (const enum PixelFormat[]) {
+        PIX_FMT_RGB24, PIX_FMT_PAL8, PIX_FMT_GRAY8,
+        PIX_FMT_MONOBLACK, PIX_FMT_MONOWHITE,
+        PIX_FMT_YUV420P, PIX_FMT_YUV422P, PIX_FMT_YUV444P,
+        PIX_FMT_YUV410P, PIX_FMT_YUV411P,
+        PIX_FMT_NONE
+    },
+    .long_name      = NULL_IF_CONFIG_SMALL("TIFF image"),
     .priv_class     = &tiffenc_class,
 };

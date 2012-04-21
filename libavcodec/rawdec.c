@@ -179,6 +179,8 @@ static int raw_decode(AVCodecContext *avctx,
         flip(avctx, picture);
 
     if (   avctx->codec_tag == MKTAG('Y', 'V', '1', '2')
+        || avctx->codec_tag == MKTAG('Y', 'V', '1', '6')
+        || avctx->codec_tag == MKTAG('Y', 'V', '2', '4')
         || avctx->codec_tag == MKTAG('Y', 'V', 'U', '9'))
         FFSWAP(uint8_t *, picture->data[1], picture->data[2]);
 
@@ -213,5 +215,5 @@ AVCodec ff_rawvideo_decoder = {
     .init           = raw_init_decoder,
     .close          = raw_close_decoder,
     .decode         = raw_decode,
-    .long_name = NULL_IF_CONFIG_SMALL("raw video"),
+    .long_name      = NULL_IF_CONFIG_SMALL("raw video"),
 };

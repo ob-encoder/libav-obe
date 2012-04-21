@@ -27,6 +27,7 @@
 #include "libavutil/avstring.h"
 #include "libavutil/eval.h"
 #include "libavutil/mathematics.h"
+#include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
 #include "libswscale/swscale.h"
 
@@ -91,7 +92,15 @@ static av_cold int init(AVFilterContext *ctx, const char *args, void *opaque)
     if (args) {
         sscanf(args, "%255[^:]:%255[^:]", scale->w_expr, scale->h_expr);
         p = strstr(args,"flags=");
-        if (p) scale->flags = strtoul(p+6, NULL, 0);
+        if (p) {
+            const AVClass *class = sws_get_class();
+            const AVOption    *o = av_opt_find(&class, "sws_flags", NULL, 0,
+                                               AV_OPT_SEARCH_FAKE_OBJ);
+            int ret = av_opt_eval_flags(&class, o, p + 6, &scale->flags);
+
+            if (ret < 0)
+                return ret;
+        }
     }
 
     return 0;
@@ -213,11 +222,16 @@ static int config_props(AVFilterLink *outlink)
 
     if (scale->sws)
         sws_freeContext(scale->sws);
-    scale->sws = sws_getContext(inlink ->w, inlink ->h, inlink ->format,
-                                outlink->w, outlink->h, outlink->format,
-                                scale->flags, NULL, NULL, NULL);
-    if (!scale->sws)
-        return AVERROR(EINVAL);
+    if (inlink->w == outlink->w && inlink->h == outlink->h &&
+        inlink->format == outlink->format)
+        scale->sws = NULL;
+    else {
+        scale->sws = sws_getContext(inlink ->w, inlink ->h, inlink ->format,
+                                    outlink->w, outlink->h, outlink->format,
+                                    scale->flags, NULL, NULL, NULL);
+        if (!scale->sws)
+            return AVERROR(EINVAL);
+    }
 
 
     if (inlink->sample_aspect_ratio.num)
@@ -240,6 +254,11 @@ static void start_frame(AVFilterLink *link, AVFilterBufferRef *picref)
     ScaleContext *scale = link->dst->priv;
     AVFilterLink *outlink = link->dst->outputs[0];
     AVFilterBufferRef *outpicref;
+
+    if (!scale->sws) {
+        avfilter_start_frame(outlink, avfilter_ref_buffer(picref, ~0));
+        return;
+    }
 
     scale->hsub = av_pix_fmt_descriptors[link->format].log2_chroma_w;
     scale->vsub = av_pix_fmt_descriptors[link->format].log2_chroma_h;
@@ -266,6 +285,11 @@ static void draw_slice(AVFilterLink *link, int y, int h, int slice_dir)
     int out_h;
     AVFilterBufferRef *cur_pic = link->cur_buf;
     const uint8_t *data[4];
+
+    if (!scale->sws) {
+        avfilter_draw_slice(link->dst->outputs[0], y, h, slice_dir);
+        return;
+    }
 
     if (scale->slice_y == 0 && slice_dir == -1)
         scale->slice_y = link->dst->outputs[0]->h;

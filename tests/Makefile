@@ -16,10 +16,10 @@ tests/vsynth2/00.pgm: tests/rotozoom$(HOSTEXESUF) | tests/vsynth2
 tests/data/asynth1.sw: tests/audiogen$(HOSTEXESUF) | tests/data
 	$(M)./$< $@
 
-tests/data/asynth-16000-1.sw: tests/audiogen$(HOSTEXESUF) | tests/data
-	$(M)./$< $@ 16000 1
+tests/data/asynth-%.wav: tests/audiogen$(HOSTEXESUF) | tests/data
+	$(M)./$< $@ $(subst -, ,$*)
 
-tests/data/asynth%.sw tests/vsynth%/00.pgm: TAG = GEN
+tests/data/asynth% tests/vsynth%/00.pgm: TAG = GEN
 
 include $(SRC_PATH)/tests/fate/aac.mak
 include $(SRC_PATH)/tests/fate/ac3.mak
@@ -29,6 +29,7 @@ include $(SRC_PATH)/tests/fate/amrnb.mak
 include $(SRC_PATH)/tests/fate/amrwb.mak
 include $(SRC_PATH)/tests/fate/atrac.mak
 include $(SRC_PATH)/tests/fate/audio.mak
+include $(SRC_PATH)/tests/fate/bmp.mak
 include $(SRC_PATH)/tests/fate/cdxl.mak
 include $(SRC_PATH)/tests/fate/dct.mak
 include $(SRC_PATH)/tests/fate/demux.mak

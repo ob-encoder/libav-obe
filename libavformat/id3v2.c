@@ -114,6 +114,7 @@ const char *ff_id3v2_picture_types[21] = {
 const CodecMime ff_id3v2_mime_tags[] = {
     {"image/gif" , CODEC_ID_GIF},
     {"image/jpeg", CODEC_ID_MJPEG},
+    {"image/jpg",  CODEC_ID_MJPEG},
     {"image/png" , CODEC_ID_PNG},
     {"image/tiff", CODEC_ID_TIFF},
     {"",           CODEC_ID_NONE},
@@ -560,8 +561,17 @@ static void ff_id3v2_parse(AVFormatContext *s, int len, uint8_t version, uint8_t
 
     unsync = flags & 0x80;
 
-    if (isv34 && flags & 0x40) /* Extended header present, just skip over it */
-        avio_skip(s->pb, get_size(s->pb, 4));
+    if (isv34 && flags & 0x40) { /* Extended header present, just skip over it */
+        int extlen = get_size(s->pb, 4);
+        if (version == 4)
+            extlen -= 4;     // in v2.4 the length includes the length field we just read
+
+        if (extlen < 0) {
+            reason = "invalid extended header length";
+            goto error;
+        }
+        avio_skip(s->pb, extlen);
+    }
 
     while (len >= taghdrlen) {
         unsigned int tflags = 0;
