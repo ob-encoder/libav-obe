@@ -201,6 +201,10 @@
 #include "avio.h"
 #include "libavformat/version.h"
 
+#if FF_API_AV_GETTIME
+#include "libavutil/time.h"
+#endif
+
 struct AVFormatContext;
 
 
@@ -351,6 +355,9 @@ typedef struct AVProbeData {
 #define AVFMT_NOGENSEARCH   0x4000 /**< Format does not allow to fallback to generic search */
 #define AVFMT_NO_BYTE_SEEK  0x8000 /**< Format does not allow seeking by bytes */
 #define AVFMT_ALLOW_FLUSH  0x10000 /**< Format allows flushing. If not set, the muxer will not receive a NULL packet in the write_packet function. */
+#define AVFMT_TS_NONSTRICT 0x20000 /**< Format does not require strictly
+                                        increasing timestamps, but they must
+                                        still be monotonic */
 
 /**
  * @addtogroup lavf_encoding
@@ -373,7 +380,8 @@ typedef struct AVOutputFormat {
     /**
      * can use flags: AVFMT_NOFILE, AVFMT_NEEDNUMBER, AVFMT_RAWPICTURE,
      * AVFMT_GLOBALHEADER, AVFMT_NOTIMESTAMPS, AVFMT_VARIABLE_FPS,
-     * AVFMT_NODIMENSIONS, AVFMT_NOSTREAMS, AVFMT_ALLOW_FLUSH
+     * AVFMT_NODIMENSIONS, AVFMT_NOSTREAMS, AVFMT_ALLOW_FLUSH,
+     * AVFMT_TS_NONSTRICT
      */
     int flags;
 
@@ -817,7 +825,7 @@ typedef struct AVFormatContext {
      */
     void *priv_data;
 
-    /*
+    /**
      * I/O context.
      *
      * decoding: either set by the user before avformat_open_input() (then
@@ -1630,11 +1638,6 @@ void av_dump_format(AVFormatContext *ic,
                     int index,
                     const char *url,
                     int is_output);
-
-/**
- * Get the current time in microseconds.
- */
-int64_t av_gettime(void);
 
 /**
  * Return in 'buf' the path with '%d' replaced by a number.

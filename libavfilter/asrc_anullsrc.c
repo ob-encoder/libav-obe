@@ -22,6 +22,7 @@
  */
 
 #include "avfilter.h"
+#include "internal.h"
 #include "libavutil/audioconvert.h"
 
 typedef struct {
@@ -29,7 +30,7 @@ typedef struct {
     int64_t sample_rate;
 } ANullContext;
 
-static int init(AVFilterContext *ctx, const char *args, void *opaque)
+static int init(AVFilterContext *ctx, const char *args)
 {
     ANullContext *priv = ctx->priv;
     char channel_layout_str[128] = "";
@@ -67,7 +68,7 @@ static int config_props(AVFilterLink *outlink)
 
     chans_nb = av_get_channel_layout_nb_channels(priv->channel_layout);
     av_get_channel_layout_string(buf, sizeof(buf), chans_nb, priv->channel_layout);
-    av_log(outlink->src, AV_LOG_INFO,
+    av_log(outlink->src, AV_LOG_VERBOSE,
            "sample_rate:%"PRId64 " channel_layout:%"PRId64 " channel_layout_description:'%s'\n",
            priv->sample_rate, priv->channel_layout, buf);
 
@@ -86,11 +87,11 @@ AVFilter avfilter_asrc_anullsrc = {
     .init        = init,
     .priv_size   = sizeof(ANullContext),
 
-    .inputs      = (AVFilterPad[]) {{ .name = NULL}},
+    .inputs      = (const AVFilterPad[]) {{ .name = NULL}},
 
-    .outputs     = (AVFilterPad[]) {{ .name = "default",
-                                      .type = AVMEDIA_TYPE_AUDIO,
-                                      .config_props = config_props,
-                                      .request_frame = request_frame, },
-                                    { .name = NULL}},
+    .outputs     = (const AVFilterPad[]) {{ .name = "default",
+                                            .type = AVMEDIA_TYPE_AUDIO,
+                                            .config_props = config_props,
+                                            .request_frame = request_frame, },
+                                          { .name = NULL}},
 };

@@ -45,6 +45,10 @@ struc FFTContext
     .mdctbits: resd 1
     .tcos:     pointer 1
     .tsin:     pointer 1
+    .fftperm:  pointer 1
+    .fftcalc:  pointer 1
+    .imdctcalc:pointer 1
+    .imdcthalf:pointer 1
 endstruc
 
 SECTION_RODATA
@@ -65,6 +69,7 @@ perm1: dd 0x00, 0x02, 0x03, 0x01, 0x03, 0x00, 0x02, 0x01
 perm2: dd 0x00, 0x01, 0x02, 0x03, 0x01, 0x00, 0x02, 0x03
 ps_p1p1m1p1root2: dd 1.0, 1.0, -1.0, 1.0, M_SQRT1_2, M_SQRT1_2, M_SQRT1_2, M_SQRT1_2
 ps_m1m1p1m1p1m1m1m1: dd 1<<31, 1<<31, 0, 1<<31, 0, 1<<31, 1<<31, 1<<31
+ps_m1m1m1m1: times 4 dd 1<<31
 ps_m1p1: dd 1<<31, 0
 
 %assign i 16
@@ -297,7 +302,7 @@ IF%1 mova  Z(1), m5
 %define Z2(x) [r0+mmsize*x]
 %define ZH(x) [r0+mmsize*x+mmsize/2]
 
-INIT_YMM
+INIT_YMM avx
 
 %if HAVE_AVX
 align 16
@@ -390,7 +395,7 @@ fft32_interleave_avx:
     ret
 %endif
 
-INIT_XMM
+INIT_XMM sse
 %define movdqa  movaps
 
 align 16
@@ -439,11 +444,9 @@ fft16_sse:
     ret
 
 
-INIT_MMX
-
-%macro FFT48_3DN 1
+%macro FFT48_3DN 0
 align 16
-fft4%1:
+fft4 %+ SUFFIX:
     T2_3DN   m0, m1, Z(0), Z(1)
     mova     m2, Z(2)
     mova     m3, Z(3)
@@ -457,7 +460,7 @@ fft4%1:
     ret
 
 align 16
-fft8%1:
+fft8 %+ SUFFIX:
     T2_3DN   m0, m1, Z(0), Z(1)
     mova     m2, Z(2)
     mova     m3, Z(3)
@@ -495,7 +498,8 @@ fft8%1:
     ret
 %endmacro
 
-FFT48_3DN _3dn2
+INIT_MMX 3dnow2
+FFT48_3DN
 
 %macro pswapd 2
 %ifidn %1, %2
@@ -508,7 +512,8 @@ FFT48_3DN _3dn2
 %endif
 %endmacro
 
-FFT48_3DN _3dn
+INIT_MMX 3dnow
+FFT48_3DN
 
 
 %define Z(x) [zq + o1q*(x&6) + mmsize*(x&1)]
@@ -532,7 +537,17 @@ DEFINE_ARGS z, w, n, o1, o3
     rep ret
 %endmacro
 
-INIT_YMM
+%macro FFT_DISPATCH 2; clobbers 5 GPRs, 8 XMMs
+    lea r2, [dispatch_tab%1]
+    mov r2, [r2 + (%2q-2)*gprsize]
+%ifdef PIC
+    lea r3, [$$]
+    add r2, r3
+%endif
+    call r2
+%endmacro ; FFT_DISPATCH
+
+INIT_YMM avx
 
 %if HAVE_AVX
 %macro INTERL_AVX 5
@@ -548,9 +563,17 @@ INIT_YMM
 
 DECL_PASS pass_avx, PASS_BIG 1
 DECL_PASS pass_interleave_avx, PASS_BIG 0
+
+cglobal fft_calc, 2,5,8
+    mov     r3d, [r0 + FFTContext.nbits]
+    mov     r0, r1
+    mov     r1, r3
+    FFT_DISPATCH _interleave %+ SUFFIX, r1
+    REP_RET
+
 %endif
 
-INIT_XMM
+INIT_XMM sse
 
 %macro INTERL_SSE 5
     mova     %3, %2
@@ -565,16 +588,115 @@ INIT_XMM
 DECL_PASS pass_sse, PASS_BIG 1
 DECL_PASS pass_interleave_sse, PASS_BIG 0
 
-INIT_MMX
+cglobal fft_calc, 2,5,8
+    mov     r3d, [r0 + FFTContext.nbits]
+    PUSH    r1
+    PUSH    r3
+    mov     r0, r1
+    mov     r1, r3
+    FFT_DISPATCH _interleave %+ SUFFIX, r1
+    POP     rcx
+    POP     r4
+    cmp     rcx, 4
+    jg      .end
+    mov     r2, -1
+    add     rcx, 3
+    shl     r2, cl
+    sub     r4, r2
+.loop
+    movaps   xmm0, [r4 + r2]
+    movaps   xmm1, xmm0
+    unpcklps xmm0, [r4 + r2 + 16]
+    unpckhps xmm1, [r4 + r2 + 16]
+    movaps   [r4 + r2],      xmm0
+    movaps   [r4 + r2 + 16], xmm1
+    add      r2, 32
+    jl       .loop
+.end:
+    REP_RET
+
+cglobal fft_permute, 2,7,1
+    mov     r4,  [r0 + FFTContext.revtab]
+    mov     r5,  [r0 + FFTContext.tmpbuf]
+    mov     ecx, [r0 + FFTContext.nbits]
+    mov     r2, 1
+    shl     r2, cl
+    xor     r0, r0
+%if ARCH_X86_32
+    mov     r1, r1m
+%endif
+.loop:
+    movaps  xmm0, [r1 + 8*r0]
+    movzx   r6, word [r4 + 2*r0]
+    movzx   r3, word [r4 + 2*r0 + 2]
+    movlps  [r5 + 8*r6], xmm0
+    movhps  [r5 + 8*r3], xmm0
+    add     r0, 2
+    cmp     r0, r2
+    jl      .loop
+    shl     r2, 3
+    add     r1, r2
+    add     r5, r2
+    neg     r2
+; nbits >= 2 (FFT4) and sizeof(FFTComplex)=8 => at least 32B
+.loopcopy:
+    movaps  xmm0, [r5 + r2]
+    movaps  xmm1, [r5 + r2 + 16]
+    movaps  [r1 + r2], xmm0
+    movaps  [r1 + r2 + 16], xmm1
+    add     r2, 32
+    jl      .loopcopy
+    REP_RET
+
+cglobal imdct_calc, 3,5,3
+    mov     r3d, [r0 + FFTContext.mdctsize]
+    mov     r4,  [r0 + FFTContext.imdcthalf]
+    add     r1,  r3
+    PUSH    r3
+    PUSH    r1
+%if ARCH_X86_32
+    push    r2
+    push    r1
+    push    r0
+%else
+    sub     rsp, 8
+%endif
+    call    r4
+%if ARCH_X86_32
+    add     esp, 12
+%else
+    add     rsp, 8
+%endif
+    POP     r1
+    POP     r3
+    lea     r0, [r1 + 2*r3]
+    mov     r2, r3
+    sub     r3, 16
+    neg     r2
+    movaps  xmm2, [ps_m1m1m1m1]
+.loop:
+    movaps  xmm0, [r1 + r3]
+    movaps  xmm1, [r0 + r2]
+    shufps  xmm0, xmm0, 0x1b
+    shufps  xmm1, xmm1, 0x1b
+    xorps   xmm0, xmm2
+    movaps  [r0 + r3], xmm1
+    movaps  [r1 + r2], xmm0
+    sub     r3, 16
+    add     r2, 16
+    jl      .loop
+    REP_RET
+
+INIT_MMX 3dnow
 %define mulps pfmul
 %define addps pfadd
 %define subps pfsub
 %define unpcklps punpckldq
 %define unpckhps punpckhdq
-DECL_PASS pass_3dn, PASS_SMALL 1, [wq], [wq+o1q]
-DECL_PASS pass_interleave_3dn, PASS_BIG 0
-%define pass_3dn2 pass_3dn
-%define pass_interleave_3dn2 pass_interleave_3dn
+DECL_PASS pass_3dnow, PASS_SMALL 1, [wq], [wq+o1q]
+DECL_PASS pass_interleave_3dnow, PASS_BIG 0
+%define pass_3dnow2 pass_3dnow
+%define pass_interleave_3dnow2 pass_interleave_3dnow
 
 %ifdef PIC
 %define SECTION_REL - $$
@@ -582,77 +704,73 @@ DECL_PASS pass_interleave_3dn, PASS_BIG 0
 %define SECTION_REL
 %endif
 
-%macro FFT_DISPATCH 2; clobbers 5 GPRs, 8 XMMs
-    lea r2, [dispatch_tab%1]
-    mov r2, [r2 + (%2q-2)*gprsize]
-%ifdef PIC
-    lea r3, [$$]
-    add r2, r3
+%macro DECL_FFT 1-2 ; nbits, suffix
+%ifidn %0, 1
+%xdefine fullsuffix SUFFIX
+%else
+%xdefine fullsuffix %2 %+ SUFFIX
 %endif
-    call r2
-%endmacro ; FFT_DISPATCH
-
-%macro DECL_FFT 2-3 ; nbits, cpu, suffix
-%xdefine list_of_fft fft4%2 SECTION_REL, fft8%2 SECTION_REL
+%xdefine list_of_fft fft4 %+ SUFFIX SECTION_REL, fft8 %+ SUFFIX SECTION_REL
 %if %1>=5
-%xdefine list_of_fft list_of_fft, fft16%2 SECTION_REL
+%xdefine list_of_fft list_of_fft, fft16 %+ SUFFIX SECTION_REL
 %endif
 %if %1>=6
-%xdefine list_of_fft list_of_fft, fft32%3%2 SECTION_REL
+%xdefine list_of_fft list_of_fft, fft32 %+ fullsuffix SECTION_REL
 %endif
 
 %assign n 1<<%1
 %rep 17-%1
 %assign n2 n/2
 %assign n4 n/4
-%xdefine list_of_fft list_of_fft, fft %+ n %+ %3%2 SECTION_REL
+%xdefine list_of_fft list_of_fft, fft %+ n %+ fullsuffix SECTION_REL
 
 align 16
-fft %+ n %+ %3%2:
-    call fft %+ n2 %+ %2
+fft %+ n %+ fullsuffix:
+    call fft %+ n2 %+ SUFFIX
     add r0, n*4 - (n&(-2<<%1))
-    call fft %+ n4 %+ %2
+    call fft %+ n4 %+ SUFFIX
     add r0, n*2 - (n2&(-2<<%1))
-    call fft %+ n4 %+ %2
+    call fft %+ n4 %+ SUFFIX
     sub r0, n*6 + (n2&(-2<<%1))
     lea r1, [cos_ %+ n]
     mov r2d, n4/2
-    jmp pass%3%2
+    jmp pass %+ fullsuffix
 
 %assign n n*2
 %endrep
 %undef n
 
 align 8
-dispatch_tab%3%2: pointer list_of_fft
+dispatch_tab %+ fullsuffix: pointer list_of_fft
 
 section .text
 
 ; On x86_32, this function does the register saving and restoring for all of fft.
 ; The others pass args in registers and don't spill anything.
-cglobal fft_dispatch%3%2, 2,5,8, z, nbits
-    FFT_DISPATCH %3%2, nbits
-%ifidn %2, _avx
+cglobal fft_dispatch%2, 2,5,8, z, nbits
+    FFT_DISPATCH fullsuffix, nbits
+%if mmsize == 32
     vzeroupper
 %endif
     RET
 %endmacro ; DECL_FFT
 
 %if HAVE_AVX
-INIT_YMM
-DECL_FFT 6, _avx
-DECL_FFT 6, _avx, _interleave
+INIT_YMM avx
+DECL_FFT 6
+DECL_FFT 6, _interleave
 %endif
-INIT_XMM
-DECL_FFT 5, _sse
-DECL_FFT 5, _sse, _interleave
-INIT_MMX
-DECL_FFT 4, _3dn
-DECL_FFT 4, _3dn, _interleave
-DECL_FFT 4, _3dn2
-DECL_FFT 4, _3dn2, _interleave
+INIT_XMM sse
+DECL_FFT 5
+DECL_FFT 5, _interleave
+INIT_MMX 3dnow
+DECL_FFT 4
+DECL_FFT 4, _interleave
+INIT_MMX 3dnow2
+DECL_FFT 4
+DECL_FFT 4, _interleave
 
-INIT_XMM
+INIT_XMM sse
 %undef mulps
 %undef addps
 %undef subps
@@ -748,8 +866,8 @@ INIT_XMM
     jl       .post
 %endmacro
 
-%macro DECL_IMDCT 2
-cglobal imdct_half%1, 3,12,8; FFTContext *s, FFTSample *output, const FFTSample *input
+%macro DECL_IMDCT 1
+cglobal imdct_half, 3,12,8; FFTContext *s, FFTSample *output, const FFTSample *input
 %if ARCH_X86_64
 %define rrevtab r7
 %define rtcos   r8
@@ -821,7 +939,7 @@ cglobal imdct_half%1, 3,12,8; FFTContext *s, FFTSample *output, const FFTSample 
     mov  r0, r1
     mov  r1d, [r5+FFTContext.nbits]
 
-    FFT_DISPATCH %1, r1
+    FFT_DISPATCH SUFFIX, r1
 
     mov  r0d, [r5+FFTContext.mdctsize]
     add  r6, r0
@@ -835,20 +953,20 @@ cglobal imdct_half%1, 3,12,8; FFTContext *s, FFTSample *output, const FFTSample 
     neg  r0
     mov  r1, -mmsize
     sub  r1, r0
-    %2 r0, r1, r6, rtcos, rtsin
+    %1 r0, r1, r6, rtcos, rtsin
 %if ARCH_X86_64 == 0
     add esp, 12
 %endif
-%ifidn avx_enabled, 1
+%if mmsize == 32
     vzeroupper
 %endif
     RET
 %endmacro
 
-DECL_IMDCT _sse, POSROTATESHUF
+DECL_IMDCT POSROTATESHUF
 
-INIT_YMM
+INIT_YMM avx
 
 %if HAVE_AVX
-DECL_IMDCT _avx, POSROTATESHUF_AVX
+DECL_IMDCT POSROTATESHUF_AVX
 %endif

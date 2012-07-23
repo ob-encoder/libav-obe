@@ -20,7 +20,7 @@ $(foreach VAR,$(SILENT),$(eval override $(VAR) = @$($(VAR))))
 $(eval INSTALL = @$(call ECHO,INSTALL,$$(^:$(SRC_PATH)/%=%)); $(INSTALL))
 endif
 
-ALLFFLIBS = avcodec avdevice avfilter avformat avutil swscale
+ALLFFLIBS = avcodec avdevice avfilter avformat avresample avutil swscale
 
 IFLAGS     := -I. -I$(SRC_PATH)
 CPPFLAGS   := $(IFLAGS) $(CPPFLAGS)
@@ -45,7 +45,7 @@ COMPILE_S = $(call COMPILE,AS)
 	$(COMPILE_S)
 
 %.ho: %.h
-	$(CC) $(CPPFLAGS) $(CFLAGS) -Wno-unused -c -o $@ -x c $<
+	$(CC) $(CPPFLAGS) $(CFLAGS) -c -o $@ -x c $<
 
 %.ver: %.v
 	$(Q)sed 's/$$MAJOR/$($(basename $(@F))_VERSION_MAJOR)/' $^ > $@
@@ -71,6 +71,7 @@ ALLMANPAGES = $(BASENAMES:%=%.1)
 FFLIBS-$(CONFIG_AVDEVICE) += avdevice
 FFLIBS-$(CONFIG_AVFILTER) += avfilter
 FFLIBS-$(CONFIG_AVFORMAT) += avformat
+FFLIBS-$(CONFIG_AVRESAMPLE) += avresample
 FFLIBS-$(CONFIG_AVCODEC)  += avcodec
 FFLIBS-$(CONFIG_SWSCALE)  += swscale
 
@@ -183,6 +184,8 @@ distclean::
 config:
 	$(SRC_PATH)/configure $(value LIBAV_CONFIGURATION)
 
+check: all alltools checkheaders examples testprogs fate
+
 include $(SRC_PATH)/doc/Makefile
 include $(SRC_PATH)/tests/Makefile
 
@@ -197,5 +200,5 @@ $(sort $(OBJDIRS)):
 # so this saves some time on slow systems.
 .SUFFIXES:
 
-.PHONY: all all-yes alltools *clean config examples install*
+.PHONY: all all-yes alltools check *clean config examples install*
 .PHONY: testprogs uninstall*

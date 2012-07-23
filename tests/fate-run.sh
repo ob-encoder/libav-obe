@@ -21,6 +21,7 @@ cpuflags=${11:-all}
 cmp_shift=${12:-0}
 cmp_target=${13:-0}
 size_tolerance=${14:-0}
+cmp_unit=${15:-2}
 
 outdir="tests/data/fate"
 outfile="${outdir}/${test}"
@@ -40,7 +41,7 @@ compare(){
 }
 
 do_tiny_psnr(){
-    psnr=$(tests/tiny_psnr "$1" "$2" 2 $cmp_shift 0)
+    psnr=$(tests/tiny_psnr "$1" "$2" $cmp_unit $cmp_shift 0)
     val=$(expr "$psnr" : ".*$3: *\([0-9.]*\)")
     size1=$(expr "$psnr" : '.*bytes: *\([0-9]*\)')
     size2=$(expr "$psnr" : '.*bytes:[ 0-9]*/ *\([0-9]*\)')
@@ -60,13 +61,27 @@ stddev(){
     do_tiny_psnr "$1" "$2" stddev
 }
 
+oneline(){
+    printf '%s\n' "$1" | diff -u -b - "$2"
+}
+
 run(){
     test "${V:-0}" -gt 0 && echo "$target_exec" $target_path/"$@" >&3
     $target_exec $target_path/"$@"
 }
 
+probefmt(){
+    run avprobe -show_format_entry format_name -v 0 "$@"
+}
+
 avconv(){
-    run avconv -nostats -threads $threads -thread_type $thread_type -cpuflags $cpuflags "$@"
+    dec_opts="-threads $threads -thread_type $thread_type"
+    avconv_args="-nostats -cpuflags $cpuflags"
+    for arg in $@; do
+        [ ${arg} = -i ] && avconv_args="${avconv_args} ${dec_opts}"
+        avconv_args="${avconv_args} ${arg}"
+    done
+    run avconv ${avconv_args}
 }
 
 framecrc(){
@@ -102,14 +117,38 @@ enc_dec_pcm(){
     avconv -f $out_fmt -i ${encfile} -c:a pcm_${pcm_fmt} -f ${dec_fmt} -
 }
 
+FLAGS="-flags +bitexact -sws_flags +accurate_rnd+bitexact"
+DEC_OPTS="-threads $threads -idct simple $FLAGS"
+ENC_OPTS="-threads 1        -idct simple -dct fastint"
+
+enc_dec(){
+    src_fmt=$1
+    srcfile=$2
+    enc_fmt=$3
+    enc_opt=$4
+    dec_fmt=$5
+    dec_opt=$6
+    encfile="${outdir}/${test}.${enc_fmt}"
+    decfile="${outdir}/${test}.out.${dec_fmt}"
+    cleanfiles="$cleanfiles $decfile"
+    test "$7" = -keep || cleanfiles="$cleanfiles $encfile"
+    tsrcfile=$(target_path $srcfile)
+    tencfile=$(target_path $encfile)
+    tdecfile=$(target_path $decfile)
+    avconv -f $src_fmt $DEC_OPTS -i $tsrcfile $ENC_OPTS $enc_opt $FLAGS \
+        -f $enc_fmt -y $tencfile || return
+    do_md5sum $encfile
+    echo $(wc -c $encfile)
+    avconv $DEC_OPTS -i $tencfile $ENC_OPTS $dec_opt $FLAGS \
+        -f $dec_fmt -y $tdecfile || return
+    do_md5sum $decfile
+    tests/tiny_psnr $srcfile $decfile $cmp_unit $cmp_shift
+}
+
 regtest(){
     t="${test#$2-}"
     ref=${base}/ref/$2/$t
     ${base}/${1}-regression.sh $t $2 $3 "$target_exec" "$target_path" "$threads" "$thread_type" "$cpuflags"
-}
-
-codectest(){
-    regtest codec $1 tests/$1
 }
 
 lavftest(){
@@ -127,10 +166,10 @@ seektest(){
     case $t in
         image_*) file="tests/data/images/${t#image_}/%02d.${t#image_}" ;;
         *)       file=$(echo $t | tr _ '?')
-                 for d in acodec vsynth2 lavf; do
-                     test -f tests/data/$d/$file && break
+                 for d in fate/acodec- fate/vsynth2- lavf/; do
+                     test -f tests/data/$d$file && break
                  done
-                 file=$(echo tests/data/$d/$file)
+                 file=$(echo tests/data/$d$file)
                  ;;
     esac
     run libavformat/seek-test $target_path/$file
@@ -139,7 +178,7 @@ seektest(){
 mkdir -p "$outdir"
 
 exec 3>&2
-$command > "$outfile" 2>$errfile
+eval $command >"$outfile" 2>$errfile
 err=$?
 
 if [ $err -gt 128 ]; then
@@ -147,11 +186,12 @@ if [ $err -gt 128 ]; then
     test "${sig}" = "${sig%[!A-Za-z]*}" || unset sig
 fi
 
-if test -e "$ref"; then
+if test -e "$ref" || test $cmp = "oneline" ; then
     case $cmp in
-        diff)   diff -u -w "$ref" "$outfile"            >$cmpfile ;;
+        diff)   diff -u -b "$ref" "$outfile"            >$cmpfile ;;
         oneoff) oneoff     "$ref" "$outfile"            >$cmpfile ;;
         stddev) stddev     "$ref" "$outfile"            >$cmpfile ;;
+        oneline)oneline    "$ref" "$outfile"            >$cmpfile ;;
         null)   cat               "$outfile"            >$cmpfile ;;
     esac
     cmperr=$?

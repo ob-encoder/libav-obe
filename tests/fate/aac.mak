@@ -55,8 +55,8 @@ fate-aac-ap05_48: CMD = pcm -i $(SAMPLES)/aac/ap05_48.mp4
 fate-aac-ap05_48: REF = $(SAMPLES)/aac/ap05_48.s16
 
 FATE_AAC += fate-aac-latm_stereo_to_51
-fate-aac-latm_stereo_to_51: CMD = pcm -i $(SAMPLES)/aac/latm_stereo_to_51.ts -ac 6
-fate-aac-latm_stereo_to_51: REF = $(SAMPLES)/aac/latm_stereo_to_51.s16
+fate-aac-latm_stereo_to_51: CMD = pcm -i $(SAMPLES)/aac/latm_stereo_to_51.ts -channel_layout 5.1
+fate-aac-latm_stereo_to_51: REF = $(SAMPLES)/aac/latm_stereo_to_51_ref.s16
 
 fate-aac-ct%: CMD = pcm -i $(SAMPLES)/aac/CT_DecoderCheck/$(@:fate-aac-ct-%=%)
 fate-aac-ct%: REF = $(SAMPLES)/aac/CT_DecoderCheck/aacPlusv2.wav
@@ -71,7 +71,7 @@ FATE_AAC_CT = sbr_bc-ps_i.3gp  \
 
 FATE_AAC += $(FATE_AAC_CT:%=fate-aac-ct-%)
 
-FATE_TESTS += $(FATE_AAC)
+FATE_SAMPLES_AVCONV += $(FATE_AAC)
 fate-aac: $(FATE_AAC)
 $(FATE_AAC): CMP = oneoff
 $(FATE_AAC): FUZZ = 2

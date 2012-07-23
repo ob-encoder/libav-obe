@@ -46,9 +46,6 @@ void ff_fdct248_islow_8(DCTELEM *data);
 void ff_fdct248_islow_10(DCTELEM *data);
 
 void ff_j_rev_dct (DCTELEM *data);
-void ff_j_rev_dct4 (DCTELEM *data);
-void ff_j_rev_dct2 (DCTELEM *data);
-void ff_j_rev_dct1 (DCTELEM *data);
 void ff_wmv2_idct_c(DCTELEM *data);
 
 void ff_fdct_mmx(DCTELEM *block);
@@ -103,15 +100,6 @@ PUTAVG_PIXELS(10)
 #define ff_avg_pixels8x8_c ff_avg_pixels8x8_8_c
 #define ff_put_pixels16x16_c ff_put_pixels16x16_8_c
 #define ff_avg_pixels16x16_c ff_avg_pixels16x16_8_c
-
-/* VP3 DSP functions */
-void ff_vp3_idct_c(DCTELEM *block/* align 16*/);
-void ff_vp3_idct_put_c(uint8_t *dest/*align 8*/, int line_size, DCTELEM *block/*align 16*/);
-void ff_vp3_idct_add_c(uint8_t *dest/*align 8*/, int line_size, DCTELEM *block/*align 16*/);
-void ff_vp3_idct_dc_add_c(uint8_t *dest/*align 8*/, int line_size, const DCTELEM *block/*align 16*/);
-
-void ff_vp3_v_loop_filter_c(uint8_t *src, int stride, int *bounding_values);
-void ff_vp3_h_loop_filter_c(uint8_t *src, int stride, int *bounding_values);
 
 /* EA functions */
 void ff_ea_idct_put_c(uint8_t *dest, int linesize, DCTELEM *block);
@@ -394,15 +382,10 @@ typedef struct DSPContext {
     void (*x8_v_loop_filter)(uint8_t *src, int stride, int qscale);
     void (*x8_h_loop_filter)(uint8_t *src, int stride, int qscale);
 
-    void (*vp3_idct_dc_add)(uint8_t *dest/*align 8*/, int line_size, const DCTELEM *block/*align 16*/);
-    void (*vp3_v_loop_filter)(uint8_t *src, int stride, int *bounding_values);
-    void (*vp3_h_loop_filter)(uint8_t *src, int stride, int *bounding_values);
-
     /* assume len is a multiple of 4, and arrays are 16-byte aligned */
     void (*vorbis_inverse_coupling)(float *mag, float *ang, int blocksize);
     void (*ac3_downmix)(float (*samples)[256], float (*matrix)[2], int out_ch, int in_ch, int len);
-    /* assume len is a multiple of 8, and arrays are 16-byte aligned */
-    void (*vector_fmul)(float *dst, const float *src0, const float *src1, int len);
+    /* assume len is a multiple of 16, and arrays are 32-byte aligned */
     void (*vector_fmul_reverse)(float *dst, const float *src0, const float *src1, int len);
     /* assume len is a multiple of 8, and src arrays are 16-byte aligned */
     void (*vector_fmul_add)(float *dst, const float *src0, const float *src1, const float *src2, int len);
@@ -419,17 +402,6 @@ typedef struct DSPContext {
      * @param len length of vector, multiple of 4
      */
     void (*vector_fmul_scalar)(float *dst, const float *src, float mul,
-                               int len);
-    /**
-     * Multiply a vector of floats by a scalar float and add to
-     * destination vector.  Source and destination vectors must
-     * overlap exactly or not at all.
-     * @param dst result vector, 16-byte aligned
-     * @param src input vector, 16-byte aligned
-     * @param mul scalar value
-     * @param len length of vector, multiple of 4
-     */
-    void (*vector_fmac_scalar)(float *dst, const float *src, float mul,
                                int len);
     /**
      * Calculate the scalar product of two vectors of floats.
@@ -563,9 +535,9 @@ typedef struct DSPContext {
      * @param src  source array
      *             constraints: 16-byte aligned
      * @param min  minimum value
-     *             constraints: must in the the range [-(1<<24), 1<<24]
+     *             constraints: must be in the range [-(1 << 24), 1 << 24]
      * @param max  maximum value
-     *             constraints: must in the the range [-(1<<24), 1<<24]
+     *             constraints: must be in the range [-(1 << 24), 1 << 24]
      * @param len  number of elements in the array
      *             constraints: multiple of 32 greater than zero
      */

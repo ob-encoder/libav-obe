@@ -255,6 +255,10 @@ enum CodecID {
     CODEC_ID_CDXL,
     CODEC_ID_XBM,
     CODEC_ID_ZEROCODEC,
+    CODEC_ID_MSS1,
+    CODEC_ID_MSA1,
+    CODEC_ID_TSCC2,
+    CODEC_ID_MTS2,
 
     /* various PCM "codecs" */
     CODEC_ID_FIRST_AUDIO = 0x10000,     ///< A dummy id pointing at the start of audio codecs
@@ -393,6 +397,8 @@ enum CodecID {
     CODEC_ID_8SVX_FIB,
     CODEC_ID_BMV_AUDIO,
     CODEC_ID_RALF,
+    CODEC_ID_IAC,
+    CODEC_ID_ILBC,
 
     /* subtitle codecs */
     CODEC_ID_FIRST_SUBTITLE = 0x17000,          ///< A dummy ID pointing at the start of subtitle codecs.
@@ -465,49 +471,51 @@ enum Motion_Est_ID {
 enum AVDiscard{
     /* We leave some space between them for extensions (drop some
      * keyframes for intra-only or drop just some bidir frames). */
-    AVDISCARD_NONE   =-16, ///< discard nothing
-    AVDISCARD_DEFAULT=  0, ///< discard useless packets like 0 size packets in avi
-    AVDISCARD_NONREF =  8, ///< discard all non reference
-    AVDISCARD_BIDIR  = 16, ///< discard all bidirectional frames
-    AVDISCARD_NONKEY = 32, ///< discard all frames except keyframes
-    AVDISCARD_ALL    = 48, ///< discard all
+    AVDISCARD_NONE    =-16, ///< discard nothing
+    AVDISCARD_DEFAULT =  0, ///< discard useless packets like 0 size packets in avi
+    AVDISCARD_NONREF  =  8, ///< discard all non reference
+    AVDISCARD_BIDIR   = 16, ///< discard all bidirectional frames
+    AVDISCARD_NONKEY  = 32, ///< discard all frames except keyframes
+    AVDISCARD_ALL     = 48, ///< discard all
 };
 
 enum AVColorPrimaries{
-    AVCOL_PRI_BT709      =1, ///< also ITU-R BT1361 / IEC 61966-2-4 / SMPTE RP177 Annex B
-    AVCOL_PRI_UNSPECIFIED=2,
-    AVCOL_PRI_BT470M     =4,
-    AVCOL_PRI_BT470BG    =5, ///< also ITU-R BT601-6 625 / ITU-R BT1358 625 / ITU-R BT1700 625 PAL & SECAM
-    AVCOL_PRI_SMPTE170M  =6, ///< also ITU-R BT601-6 525 / ITU-R BT1358 525 / ITU-R BT1700 NTSC
-    AVCOL_PRI_SMPTE240M  =7, ///< functionally identical to above
-    AVCOL_PRI_FILM       =8,
-    AVCOL_PRI_NB           , ///< Not part of ABI
+    AVCOL_PRI_BT709       = 1, ///< also ITU-R BT1361 / IEC 61966-2-4 / SMPTE RP177 Annex B
+    AVCOL_PRI_UNSPECIFIED = 2,
+    AVCOL_PRI_BT470M      = 4,
+    AVCOL_PRI_BT470BG     = 5, ///< also ITU-R BT601-6 625 / ITU-R BT1358 625 / ITU-R BT1700 625 PAL & SECAM
+    AVCOL_PRI_SMPTE170M   = 6, ///< also ITU-R BT601-6 525 / ITU-R BT1358 525 / ITU-R BT1700 NTSC
+    AVCOL_PRI_SMPTE240M   = 7, ///< functionally identical to above
+    AVCOL_PRI_FILM        = 8,
+    AVCOL_PRI_NB             , ///< Not part of ABI
 };
 
 enum AVColorTransferCharacteristic{
-    AVCOL_TRC_BT709      =1, ///< also ITU-R BT1361
-    AVCOL_TRC_UNSPECIFIED=2,
-    AVCOL_TRC_GAMMA22    =4, ///< also ITU-R BT470M / ITU-R BT1700 625 PAL & SECAM
-    AVCOL_TRC_GAMMA28    =5, ///< also ITU-R BT470BG
-    AVCOL_TRC_NB           , ///< Not part of ABI
+    AVCOL_TRC_BT709       = 1, ///< also ITU-R BT1361
+    AVCOL_TRC_UNSPECIFIED = 2,
+    AVCOL_TRC_GAMMA22     = 4, ///< also ITU-R BT470M / ITU-R BT1700 625 PAL & SECAM
+    AVCOL_TRC_GAMMA28     = 5, ///< also ITU-R BT470BG
+    AVCOL_TRC_SMPTE240M   = 7,
+    AVCOL_TRC_NB             , ///< Not part of ABI
 };
 
 enum AVColorSpace{
-    AVCOL_SPC_RGB        =0,
-    AVCOL_SPC_BT709      =1, ///< also ITU-R BT1361 / IEC 61966-2-4 xvYCC709 / SMPTE RP177 Annex B
-    AVCOL_SPC_UNSPECIFIED=2,
-    AVCOL_SPC_FCC        =4,
-    AVCOL_SPC_BT470BG    =5, ///< also ITU-R BT601-6 625 / ITU-R BT1358 625 / ITU-R BT1700 625 PAL & SECAM / IEC 61966-2-4 xvYCC601
-    AVCOL_SPC_SMPTE170M  =6, ///< also ITU-R BT601-6 525 / ITU-R BT1358 525 / ITU-R BT1700 NTSC / functionally identical to above
-    AVCOL_SPC_SMPTE240M  =7,
-    AVCOL_SPC_NB           , ///< Not part of ABI
+    AVCOL_SPC_RGB         = 0,
+    AVCOL_SPC_BT709       = 1, ///< also ITU-R BT1361 / IEC 61966-2-4 xvYCC709 / SMPTE RP177 Annex B
+    AVCOL_SPC_UNSPECIFIED = 2,
+    AVCOL_SPC_FCC         = 4,
+    AVCOL_SPC_BT470BG     = 5, ///< also ITU-R BT601-6 625 / ITU-R BT1358 625 / ITU-R BT1700 625 PAL & SECAM / IEC 61966-2-4 xvYCC601
+    AVCOL_SPC_SMPTE170M   = 6, ///< also ITU-R BT601-6 525 / ITU-R BT1358 525 / ITU-R BT1700 NTSC / functionally identical to above
+    AVCOL_SPC_SMPTE240M   = 7,
+    AVCOL_SPC_YCOCG       = 8, ///< Used by Dirac / VC-2 and H.264 FRext, see ITU-T SG16
+    AVCOL_SPC_NB             , ///< Not part of ABI
 };
 
 enum AVColorRange{
-    AVCOL_RANGE_UNSPECIFIED=0,
-    AVCOL_RANGE_MPEG       =1, ///< the normal 219*2^(n-8) "MPEG" YUV ranges
-    AVCOL_RANGE_JPEG       =2, ///< the normal     2^n-1   "JPEG" YUV ranges
-    AVCOL_RANGE_NB           , ///< Not part of ABI
+    AVCOL_RANGE_UNSPECIFIED = 0,
+    AVCOL_RANGE_MPEG        = 1, ///< the normal 219*2^(n-8) "MPEG" YUV ranges
+    AVCOL_RANGE_JPEG        = 2, ///< the normal     2^n-1   "JPEG" YUV ranges
+    AVCOL_RANGE_NB             , ///< Not part of ABI
 };
 
 /**
@@ -516,14 +524,14 @@ enum AVColorRange{
  *  X   X      5 6 X      0 is undefined/unknown position
  */
 enum AVChromaLocation{
-    AVCHROMA_LOC_UNSPECIFIED=0,
-    AVCHROMA_LOC_LEFT       =1, ///< mpeg2/4, h264 default
-    AVCHROMA_LOC_CENTER     =2, ///< mpeg1, jpeg, h263
-    AVCHROMA_LOC_TOPLEFT    =3, ///< DV
-    AVCHROMA_LOC_TOP        =4,
-    AVCHROMA_LOC_BOTTOMLEFT =5,
-    AVCHROMA_LOC_BOTTOM     =6,
-    AVCHROMA_LOC_NB           , ///< Not part of ABI
+    AVCHROMA_LOC_UNSPECIFIED = 0,
+    AVCHROMA_LOC_LEFT        = 1, ///< mpeg2/4, h264 default
+    AVCHROMA_LOC_CENTER      = 2, ///< mpeg1, jpeg, h263
+    AVCHROMA_LOC_TOPLEFT     = 3, ///< DV
+    AVCHROMA_LOC_TOP         = 4,
+    AVCHROMA_LOC_BOTTOMLEFT  = 5,
+    AVCHROMA_LOC_BOTTOM      = 6,
+    AVCHROMA_LOC_NB             , ///< Not part of ABI
 };
 
 enum AVAudioServiceType {
@@ -1205,6 +1213,22 @@ typedef struct AVFrame {
      * - decoding: Set by libavcodec.
      */
     uint8_t motion_subsample_log2;
+
+    /**
+     * Sample rate of the audio data.
+     *
+     * - encoding: unused
+     * - decoding: set by get_buffer()
+     */
+    int sample_rate;
+
+    /**
+     * Channel layout of the audio data.
+     *
+     * - encoding: unused
+     * - decoding: set by get_buffer()
+     */
+    uint64_t channel_layout;
 } AVFrame;
 
 struct AVCodecInternal;
@@ -1394,7 +1418,7 @@ typedef struct AVCodecContext {
     int width, height;
 
     /**
-     * Bitstream width / height, may be different from width/height if lowres enabled.
+     * Bitstream width / height, may be different from width/height.
      * - encoding: unused
      * - decoding: Set by user before init if known. Codec should override / dynamically change if needed.
      */
@@ -2559,15 +2583,13 @@ typedef struct AVCodecContext {
 #define FF_IDCT_SIMPLEALPHA   23
 #define FF_IDCT_BINK          24
 
+#if FF_API_DSP_MASK
     /**
-     * dsp_mask could be add used to disable unwanted CPU features
-     * CPU features (i.e. MMX, SSE. ...)
-     *
-     * With the FORCE flag you may instead enable given CPU features.
-     * (Dangerous: Usable in case of misdetection, improper usage however will
-     * result into program crash.)
+     * Unused.
+     * @deprecated use av_set_cpu_flags_mask() instead.
      */
-    unsigned dsp_mask;
+    attribute_deprecated unsigned dsp_mask;
+#endif
 
     /**
      * bits per sample/pixel from the demuxer (needed for huffyuv).
@@ -2588,7 +2610,7 @@ typedef struct AVCodecContext {
      * - encoding: unused
      * - decoding: Set by user.
      */
-     int lowres;
+    attribute_deprecated int lowres;
 
     /**
      * the picture in the bitstream
@@ -2626,7 +2648,7 @@ typedef struct AVCodecContext {
 
     /**
      * Set by the client if its custom get_buffer() callback can be called
-     * from another thread, which allows faster multithreaded decoding.
+     * synchronously from another thread, which allows faster multithreaded decoding.
      * draw_horiz_band() will be called from other threads regardless of this setting.
      * Ignored if the default get_buffer() is used.
      * - encoding: Set by user.
@@ -2693,6 +2715,10 @@ typedef struct AVCodecContext {
 #define FF_PROFILE_AAC_LOW  1
 #define FF_PROFILE_AAC_SSR  2
 #define FF_PROFILE_AAC_LTP  3
+#define FF_PROFILE_AAC_HE   4
+#define FF_PROFILE_AAC_HE_V2 28
+#define FF_PROFILE_AAC_LD   22
+#define FF_PROFILE_AAC_ELD  38
 
 #define FF_PROFILE_DTS         20
 #define FF_PROFILE_DTS_ES      30
@@ -2905,7 +2931,7 @@ typedef struct AVCodec {
     const int *supported_samplerates;       ///< array of supported audio samplerates, or NULL if unknown, array is terminated by 0
     const enum AVSampleFormat *sample_fmts; ///< array of supported sample formats, or NULL if unknown, array is terminated by -1
     const uint64_t *channel_layouts;         ///< array of support channel layouts, or NULL if unknown. array is terminated by 0
-    uint8_t max_lowres;                     ///< maximum value for lowres supported by the decoder
+    attribute_deprecated uint8_t max_lowres; ///< maximum value for lowres supported by the decoder
     const AVClass *priv_class;              ///< AVClass for the private context
     const AVProfile *profiles;              ///< array of recognized profiles, or NULL if unknown, array is terminated by {FF_PROFILE_UNKNOWN}
 
@@ -3321,6 +3347,9 @@ void av_destruct_packet(AVPacket *pkt);
 
 /**
  * Initialize optional fields of a packet with default values.
+ *
+ * Note, this does not touch the data and size members, which have to be
+ * initialized separately.
  *
  * @param pkt packet
  */
@@ -3900,15 +3929,11 @@ int attribute_deprecated avcodec_encode_audio(AVCodecContext *avctx,
  * @param[in] frame AVFrame containing the raw audio data to be encoded.
  *                  May be NULL when flushing an encoder that has the
  *                  CODEC_CAP_DELAY capability set.
- *                  There are 2 codec capabilities that affect the allowed
- *                  values of frame->nb_samples.
- *                  If CODEC_CAP_SMALL_LAST_FRAME is set, then only the final
- *                  frame may be smaller than avctx->frame_size, and all other
- *                  frames must be equal to avctx->frame_size.
  *                  If CODEC_CAP_VARIABLE_FRAME_SIZE is set, then each frame
  *                  can have any number of samples.
- *                  If neither is set, frame->nb_samples must be equal to
- *                  avctx->frame_size for all frames.
+ *                  If it is not set, frame->nb_samples must be equal to
+ *                  avctx->frame_size for all frames except the last.
+ *                  The final frame may be smaller than avctx->frame_size.
  * @param[out] got_packet_ptr This field is set to 1 by libavcodec if the
  *                            output packet is non-empty, and to 0 if it is
  *                            empty. If the function returns an error, the
@@ -4233,7 +4258,10 @@ unsigned int avcodec_pix_fmt_to_codec_tag(enum PixelFormat pix_fmt);
 int avcodec_get_pix_fmt_loss(enum PixelFormat dst_pix_fmt, enum PixelFormat src_pix_fmt,
                              int has_alpha);
 
+#if FF_API_FIND_BEST_PIX_FMT
 /**
+ * @deprecated use avcodec_find_best_pix_fmt2() instead.
+ *
  * Find the best pixel format to convert to given a certain source pixel
  * format.  When converting from one pixel format to another, information loss
  * may occur.  For example, when converting from RGB24 to GRAY, the color
@@ -4255,8 +4283,31 @@ int avcodec_get_pix_fmt_loss(enum PixelFormat dst_pix_fmt, enum PixelFormat src_
  * @param[out] loss_ptr Combination of flags informing you what kind of losses will occur.
  * @return The best pixel format to convert to or -1 if none was found.
  */
+attribute_deprecated
 enum PixelFormat avcodec_find_best_pix_fmt(int64_t pix_fmt_mask, enum PixelFormat src_pix_fmt,
                               int has_alpha, int *loss_ptr);
+#endif /* FF_API_FIND_BEST_PIX_FMT */
+
+/**
+ * Find the best pixel format to convert to given a certain source pixel
+ * format.  When converting from one pixel format to another, information loss
+ * may occur.  For example, when converting from RGB24 to GRAY, the color
+ * information will be lost. Similarly, other losses occur when converting from
+ * some formats to other formats. avcodec_find_best_pix_fmt2() searches which of
+ * the given pixel formats should be used to suffer the least amount of loss.
+ * The pixel formats from which it chooses one, are determined by the
+ * pix_fmt_list parameter.
+ *
+ *
+ * @param[in] pix_fmt_list PIX_FMT_NONE terminated array of pixel formats to choose from
+ * @param[in] src_pix_fmt source pixel format
+ * @param[in] has_alpha Whether the source pixel format alpha channel is used.
+ * @param[out] loss_ptr Combination of flags informing you what kind of losses will occur.
+ * @return The best pixel format to convert to or -1 if none was found.
+ */
+enum PixelFormat avcodec_find_best_pix_fmt2(enum PixelFormat *pix_fmt_list,
+                                            enum PixelFormat src_pix_fmt,
+                                            int has_alpha, int *loss_ptr);
 
 enum PixelFormat avcodec_default_get_format(struct AVCodecContext *s, const enum PixelFormat * fmt);
 

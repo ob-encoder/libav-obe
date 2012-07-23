@@ -36,6 +36,9 @@
 #include "libavutil/imgutils.h"
 #include "libavformat/avformat.h"
 #include "avfilter.h"
+#include "formats.h"
+#include "internal.h"
+#include "video.h"
 
 typedef struct {
     const AVClass *class;
@@ -152,14 +155,14 @@ static int movie_init(AVFilterContext *ctx)
     movie->w = movie->codec_ctx->width;
     movie->h = movie->codec_ctx->height;
 
-    av_log(ctx, AV_LOG_INFO, "seek_point:%"PRIi64" format_name:%s file_name:%s stream_index:%d\n",
+    av_log(ctx, AV_LOG_VERBOSE, "seek_point:%"PRIi64" format_name:%s file_name:%s stream_index:%d\n",
            movie->seek_point, movie->format_name, movie->file_name,
            movie->stream_index);
 
     return 0;
 }
 
-static av_cold int init(AVFilterContext *ctx, const char *args, void *opaque)
+static av_cold int init(AVFilterContext *ctx, const char *args)
 {
     MovieContext *movie = ctx->priv;
     int ret;
@@ -202,7 +205,7 @@ static int query_formats(AVFilterContext *ctx)
     MovieContext *movie = ctx->priv;
     enum PixelFormat pix_fmts[] = { movie->codec_ctx->pix_fmt, PIX_FMT_NONE };
 
-    avfilter_set_common_formats(ctx, avfilter_make_format_list(pix_fmts));
+    ff_set_common_formats(ctx, ff_make_format_list(pix_fmts));
     return 0;
 }
 
@@ -235,8 +238,8 @@ static int movie_get_frame(AVFilterLink *outlink)
 
             if (frame_decoded) {
                 /* FIXME: avoid the memcpy */
-                movie->picref = avfilter_get_video_buffer(outlink, AV_PERM_WRITE | AV_PERM_PRESERVE |
-                                                          AV_PERM_REUSE2, outlink->w, outlink->h);
+                movie->picref = ff_get_video_buffer(outlink, AV_PERM_WRITE | AV_PERM_PRESERVE |
+                                                    AV_PERM_REUSE2, outlink->w, outlink->h);
                 av_image_copy(movie->picref->data, movie->picref->linesize,
                               movie->frame->data,  movie->frame->linesize,
                               movie->picref->format, outlink->w, outlink->h);
@@ -286,13 +289,24 @@ static int request_frame(AVFilterLink *outlink)
         return ret;
 
     outpicref = avfilter_ref_buffer(movie->picref, ~0);
-    avfilter_start_frame(outlink, outpicref);
-    avfilter_draw_slice(outlink, 0, outlink->h, 1);
-    avfilter_end_frame(outlink);
-    avfilter_unref_buffer(movie->picref);
-    movie->picref = NULL;
+    if (!outpicref) {
+        ret = AVERROR(ENOMEM);
+        goto fail;
+    }
 
-    return 0;
+    ret = ff_start_frame(outlink, outpicref);
+    if (ret < 0)
+        goto fail;
+
+    ret = ff_draw_slice(outlink, 0, outlink->h, 1);
+    if (ret < 0)
+        goto fail;
+
+    ret = ff_end_frame(outlink);
+fail:
+    avfilter_unref_bufferp(&movie->picref);
+
+    return ret;
 }
 
 AVFilter avfilter_vsrc_movie = {
@@ -303,10 +317,10 @@ AVFilter avfilter_vsrc_movie = {
     .uninit        = uninit,
     .query_formats = query_formats,
 
-    .inputs    = (AVFilterPad[]) {{ .name = NULL }},
-    .outputs   = (AVFilterPad[]) {{ .name            = "default",
-                                    .type            = AVMEDIA_TYPE_VIDEO,
-                                    .request_frame   = request_frame,
-                                    .config_props    = config_output_props, },
-                                  { .name = NULL}},
+    .inputs    = (const AVFilterPad[]) {{ .name = NULL }},
+    .outputs   = (const AVFilterPad[]) {{ .name            = "default",
+                                          .type            = AVMEDIA_TYPE_VIDEO,
+                                          .request_frame   = request_frame,
+                                          .config_props    = config_output_props, },
+                                        { .name = NULL}},
 };

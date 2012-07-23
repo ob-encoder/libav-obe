@@ -40,7 +40,16 @@
 #define AV_CPU_FLAG_AVX          0x4000 ///< AVX functions: requires OS support even if YMM registers aren't used
 #define AV_CPU_FLAG_XOP          0x0400 ///< Bulldozer XOP functions
 #define AV_CPU_FLAG_FMA4         0x0800 ///< Bulldozer FMA4 functions
+#define AV_CPU_FLAG_CMOV         0x1000 ///< i686 cmov
+
 #define AV_CPU_FLAG_ALTIVEC      0x0001 ///< standard
+
+#define AV_CPU_FLAG_ARMV5TE      (1 << 0)
+#define AV_CPU_FLAG_ARMV6        (1 << 1)
+#define AV_CPU_FLAG_ARMV6T2      (1 << 2)
+#define AV_CPU_FLAG_VFP          (1 << 3)
+#define AV_CPU_FLAG_VFPV3        (1 << 4)
+#define AV_CPU_FLAG_NEON         (1 << 5)
 
 /**
  * Return the flags which specify extensions supported by the CPU.
@@ -55,7 +64,15 @@ int av_get_cpu_flags(void);
  */
 void av_set_cpu_flags_mask(int mask);
 
+/**
+ * Parse CPU flags from a string.
+ *
+ * @return a combination of AV_CPU_* flags, negative on error.
+ */
+int av_parse_cpu_flags(const char *s);
+
 /* The following CPU-specific functions shall not be called directly. */
+int ff_get_cpu_flags_arm(void);
 int ff_get_cpu_flags_ppc(void);
 int ff_get_cpu_flags_x86(void);
 

@@ -37,6 +37,9 @@
 #include "libavutil/intreadwrite.h"
 #include "libavutil/parseutils.h"
 #include "avfilter.h"
+#include "formats.h"
+#include "internal.h"
+#include "video.h"
 
 typedef struct {
     const AVClass *class;
@@ -67,7 +70,7 @@ static const AVOption testsrc_options[] = {
     { NULL },
 };
 
-static av_cold int init_common(AVFilterContext *ctx, const char *args, void *opaque)
+static av_cold int init_common(AVFilterContext *ctx, const char *args)
 {
     TestSourceContext *test = ctx->priv;
     AVRational frame_rate_q;
@@ -127,11 +130,14 @@ static int request_frame(AVFilterLink *outlink)
 {
     TestSourceContext *test = outlink->src->priv;
     AVFilterBufferRef *picref;
+    int ret;
 
     if (test->max_pts >= 0 && test->pts > test->max_pts)
         return AVERROR_EOF;
-    picref = avfilter_get_video_buffer(outlink, AV_PERM_WRITE,
-                                       test->w, test->h);
+    picref = ff_get_video_buffer(outlink, AV_PERM_WRITE, test->w, test->h);
+    if (!picref)
+        return AVERROR(ENOMEM);
+
     picref->pts = test->pts++;
     picref->pos = -1;
     picref->video->key_frame = 1;
@@ -141,10 +147,10 @@ static int request_frame(AVFilterLink *outlink)
     test->nb_frame++;
     test->fill_picture_fn(outlink->src, picref);
 
-    avfilter_start_frame(outlink, avfilter_ref_buffer(picref, ~0));
-    avfilter_draw_slice(outlink, 0, picref->video->h, 1);
-    avfilter_end_frame(outlink);
-    avfilter_unref_buffer(picref);
+    if ((ret = ff_start_frame(outlink, picref)) < 0 ||
+        (ret = ff_draw_slice(outlink, 0, test->h, 1)) < 0 ||
+        (ret = ff_end_frame(outlink)) < 0)
+        return ret;
 
     return 0;
 }
@@ -334,13 +340,13 @@ static void test_fill_picture(AVFilterContext *ctx, AVFilterBufferRef *picref)
     }
 }
 
-static av_cold int test_init(AVFilterContext *ctx, const char *args, void *opaque)
+static av_cold int test_init(AVFilterContext *ctx, const char *args)
 {
     TestSourceContext *test = ctx->priv;
 
     test->class = &testsrc_class;
     test->fill_picture_fn = test_fill_picture;
-    return init_common(ctx, args, opaque);
+    return init_common(ctx, args);
 }
 
 static int test_query_formats(AVFilterContext *ctx)
@@ -348,7 +354,7 @@ static int test_query_formats(AVFilterContext *ctx)
     static const enum PixelFormat pix_fmts[] = {
         PIX_FMT_RGB24, PIX_FMT_NONE
     };
-    avfilter_set_common_formats(ctx, avfilter_make_format_list(pix_fmts));
+    ff_set_common_formats(ctx, ff_make_format_list(pix_fmts));
     return 0;
 }
 
@@ -360,13 +366,13 @@ AVFilter avfilter_vsrc_testsrc = {
 
     .query_formats = test_query_formats,
 
-    .inputs    = (AVFilterPad[]) {{ .name = NULL}},
+    .inputs    = (const AVFilterPad[]) {{ .name = NULL}},
 
-    .outputs   = (AVFilterPad[]) {{ .name = "default",
-                                    .type = AVMEDIA_TYPE_VIDEO,
-                                    .request_frame = request_frame,
-                                    .config_props  = config_props, },
-                                  { .name = NULL }},
+    .outputs   = (const AVFilterPad[]) {{ .name = "default",
+                                          .type = AVMEDIA_TYPE_VIDEO,
+                                          .request_frame = request_frame,
+                                          .config_props  = config_props, },
+                                        { .name = NULL }},
 };
 
 #endif /* CONFIG_TESTSRC_FILTER */
@@ -440,13 +446,13 @@ static void rgbtest_fill_picture(AVFilterContext *ctx, AVFilterBufferRef *picref
      }
 }
 
-static av_cold int rgbtest_init(AVFilterContext *ctx, const char *args, void *opaque)
+static av_cold int rgbtest_init(AVFilterContext *ctx, const char *args)
 {
     TestSourceContext *test = ctx->priv;
 
     test->class = &rgbtestsrc_class;
     test->fill_picture_fn = rgbtest_fill_picture;
-    return init_common(ctx, args, opaque);
+    return init_common(ctx, args);
 }
 
 static int rgbtest_query_formats(AVFilterContext *ctx)
@@ -459,7 +465,7 @@ static int rgbtest_query_formats(AVFilterContext *ctx)
         PIX_FMT_RGB555, PIX_FMT_BGR555,
         PIX_FMT_NONE
     };
-    avfilter_set_common_formats(ctx, avfilter_make_format_list(pix_fmts));
+    ff_set_common_formats(ctx, ff_make_format_list(pix_fmts));
     return 0;
 }
 
@@ -487,13 +493,13 @@ AVFilter avfilter_vsrc_rgbtestsrc = {
 
     .query_formats = rgbtest_query_formats,
 
-    .inputs    = (AVFilterPad[]) {{ .name = NULL}},
+    .inputs    = (const AVFilterPad[]) {{ .name = NULL}},
 
-    .outputs   = (AVFilterPad[]) {{ .name = "default",
-                                    .type = AVMEDIA_TYPE_VIDEO,
-                                    .request_frame = request_frame,
-                                    .config_props  = rgbtest_config_props, },
-                                  { .name = NULL }},
+    .outputs   = (const AVFilterPad[]) {{ .name = "default",
+                                          .type = AVMEDIA_TYPE_VIDEO,
+                                          .request_frame = request_frame,
+                                          .config_props  = rgbtest_config_props, },
+                                        { .name = NULL }},
 };
 
 #endif /* CONFIG_RGBTESTSRC_FILTER */

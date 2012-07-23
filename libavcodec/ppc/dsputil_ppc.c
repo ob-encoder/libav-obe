@@ -179,17 +179,11 @@ void ff_dsputil_init_ppc(DSPContext* c, AVCodecContext *avctx)
         }
 #endif //CONFIG_ENCODERS
 
-        if (avctx->lowres == 0 && avctx->bits_per_raw_sample <= 8) {
+        if (avctx->bits_per_raw_sample <= 8) {
             if ((avctx->idct_algo == FF_IDCT_AUTO) ||
                 (avctx->idct_algo == FF_IDCT_ALTIVEC)) {
                 c->idct_put = ff_idct_put_altivec;
                 c->idct_add = ff_idct_add_altivec;
-                c->idct_permutation_type = FF_TRANSPOSE_IDCT_PERM;
-            }else if((CONFIG_VP3_DECODER || CONFIG_VP5_DECODER || CONFIG_VP6_DECODER) &&
-                     avctx->idct_algo==FF_IDCT_VP3){
-                c->idct_put = ff_vp3_idct_put_altivec;
-                c->idct_add = ff_vp3_idct_add_altivec;
-                c->idct     = ff_vp3_idct_altivec;
                 c->idct_permutation_type = FF_TRANSPOSE_IDCT_PERM;
             }
         }

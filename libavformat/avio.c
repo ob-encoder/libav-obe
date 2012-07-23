@@ -19,11 +19,10 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#include <unistd.h>
-
 #include "libavutil/avstring.h"
 #include "libavutil/dict.h"
 #include "libavutil/opt.h"
+#include "libavutil/time.h"
 #include "os_support.h"
 #include "avformat.h"
 #if CONFIG_NETWORK
@@ -237,7 +236,7 @@ static inline int retry_transfer_wrapper(URLContext *h, unsigned char *buf, int 
             if (fast_retries)
                 fast_retries--;
             else
-                usleep(1000);
+                av_usleep(1000);
         } else if (ret < 1)
             return ret < 0 ? ret : len;
         if (ret)
@@ -343,6 +342,13 @@ int ffurl_get_file_handle(URLContext *h)
     if (!h->prot->url_get_file_handle)
         return -1;
     return h->prot->url_get_file_handle(h);
+}
+
+int ffurl_shutdown(URLContext *h, int flags)
+{
+    if (!h->prot->url_shutdown)
+        return AVERROR(EINVAL);
+    return h->prot->url_shutdown(h, flags);
 }
 
 int ff_check_interrupt(AVIOInterruptCB *cb)

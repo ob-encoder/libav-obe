@@ -1,7 +1,8 @@
 NAME = swscale
 FFLIBS = avutil
 
-HEADERS = swscale.h
+HEADERS = swscale.h                                                     \
+          version.h                                                     \
 
 OBJS = input.o                                          \
        options.o                                        \
@@ -12,4 +13,5 @@ OBJS = input.o                                          \
        utils.o                                          \
        yuv2rgb.o                                        \
 
-TESTPROGS = colorspace swscale
+TESTPROGS = colorspace                                                  \
+            swscale                                                     \

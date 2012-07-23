@@ -16,6 +16,29 @@ version <next>:
 - RealAudio Lossless decoder
 - ZeroCodec decoder
 - drop support for avconv without libavfilter
+- add libavresample audio conversion library
+- audio filters support in libavfilter and avconv
+- add fps filter
+- audio split filter
+- audio mix filter
+- avprobe output is now standard INI or JSON. The old format can still
+  be used with -of old.
+- Indeo Audio decoder
+- channelsplit audio filter
+- RTMPT protocol support
+- iLBC encoding/decoding via libilbc
+- Microsoft Screen 1 decoder
+- join audio filter
+- audio channel mapping filter
+- Microsoft ATC Screen decoder
+- RTSP listen mode
+- TechSmith Screen Codec 2 decoder
+- AAC encoding via libfdk-aac
+- Microsoft Expression Encoder Screen decoder
+- RTMPS protocol support
+- RTMPTS protocol support
+- JPEG 2000 encoding support through OpenJPEG
+- G.723.1 demuxer and decoder
 
 
 version 0.8:

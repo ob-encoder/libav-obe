@@ -380,38 +380,6 @@ void ff_put_pixels_clamped_c(const DCTELEM *block, uint8_t *restrict pixels,
     }
 }
 
-static void put_pixels_clamped4_c(const DCTELEM *block, uint8_t *restrict pixels,
-                                 int line_size)
-{
-    int i;
-
-    /* read the pixels */
-    for(i=0;i<4;i++) {
-        pixels[0] = av_clip_uint8(block[0]);
-        pixels[1] = av_clip_uint8(block[1]);
-        pixels[2] = av_clip_uint8(block[2]);
-        pixels[3] = av_clip_uint8(block[3]);
-
-        pixels += line_size;
-        block += 8;
-    }
-}
-
-static void put_pixels_clamped2_c(const DCTELEM *block, uint8_t *restrict pixels,
-                                 int line_size)
-{
-    int i;
-
-    /* read the pixels */
-    for(i=0;i<2;i++) {
-        pixels[0] = av_clip_uint8(block[0]);
-        pixels[1] = av_clip_uint8(block[1]);
-
-        pixels += line_size;
-        block += 8;
-    }
-}
-
 void ff_put_signed_pixels_clamped_c(const DCTELEM *block,
                                     uint8_t *restrict pixels,
                                     int line_size)
@@ -448,36 +416,6 @@ void ff_add_pixels_clamped_c(const DCTELEM *block, uint8_t *restrict pixels,
         pixels[5] = av_clip_uint8(pixels[5] + block[5]);
         pixels[6] = av_clip_uint8(pixels[6] + block[6]);
         pixels[7] = av_clip_uint8(pixels[7] + block[7]);
-        pixels += line_size;
-        block += 8;
-    }
-}
-
-static void add_pixels_clamped4_c(const DCTELEM *block, uint8_t *restrict pixels,
-                          int line_size)
-{
-    int i;
-
-    /* read the pixels */
-    for(i=0;i<4;i++) {
-        pixels[0] = av_clip_uint8(pixels[0] + block[0]);
-        pixels[1] = av_clip_uint8(pixels[1] + block[1]);
-        pixels[2] = av_clip_uint8(pixels[2] + block[2]);
-        pixels[3] = av_clip_uint8(pixels[3] + block[3]);
-        pixels += line_size;
-        block += 8;
-    }
-}
-
-static void add_pixels_clamped2_c(const DCTELEM *block, uint8_t *restrict pixels,
-                          int line_size)
-{
-    int i;
-
-    /* read the pixels */
-    for(i=0;i<2;i++) {
-        pixels[0] = av_clip_uint8(pixels[0] + block[0]);
-        pixels[1] = av_clip_uint8(pixels[1] + block[1]);
         pixels += line_size;
         block += 8;
     }
@@ -2425,12 +2363,6 @@ WRAPPER8_16_SQ(quant_psnr8x8_c, quant_psnr16_c)
 WRAPPER8_16_SQ(rd8x8_c, rd16_c)
 WRAPPER8_16_SQ(bit8x8_c, bit16_c)
 
-static void vector_fmul_c(float *dst, const float *src0, const float *src1, int len){
-    int i;
-    for(i=0; i<len; i++)
-        dst[i] = src0[i] * src1[i];
-}
-
 static void vector_fmul_reverse_c(float *dst, const float *src0, const float *src1, int len){
     int i;
     src1 += len-1;
@@ -2467,14 +2399,6 @@ static void vector_fmul_scalar_c(float *dst, const float *src, float mul,
     int i;
     for (i = 0; i < len; i++)
         dst[i] = src[i] * mul;
-}
-
-static void vector_fmac_scalar_c(float *dst, const float *src, float mul,
-                                 int len)
-{
-    int i;
-    for (i = 0; i < len; i++)
-        dst[i] += src[i] * mul;
 }
 
 static void butterflies_float_c(float *restrict v1, float *restrict v2,
@@ -2700,37 +2624,6 @@ static void ff_jref_idct_add(uint8_t *dest, int line_size, DCTELEM *block)
     ff_add_pixels_clamped_c(block, dest, line_size);
 }
 
-static void ff_jref_idct4_put(uint8_t *dest, int line_size, DCTELEM *block)
-{
-    ff_j_rev_dct4 (block);
-    put_pixels_clamped4_c(block, dest, line_size);
-}
-static void ff_jref_idct4_add(uint8_t *dest, int line_size, DCTELEM *block)
-{
-    ff_j_rev_dct4 (block);
-    add_pixels_clamped4_c(block, dest, line_size);
-}
-
-static void ff_jref_idct2_put(uint8_t *dest, int line_size, DCTELEM *block)
-{
-    ff_j_rev_dct2 (block);
-    put_pixels_clamped2_c(block, dest, line_size);
-}
-static void ff_jref_idct2_add(uint8_t *dest, int line_size, DCTELEM *block)
-{
-    ff_j_rev_dct2 (block);
-    add_pixels_clamped2_c(block, dest, line_size);
-}
-
-static void ff_jref_idct1_put(uint8_t *dest, int line_size, DCTELEM *block)
-{
-    dest[0] = av_clip_uint8((block[0] + 4)>>3);
-}
-static void ff_jref_idct1_add(uint8_t *dest, int line_size, DCTELEM *block)
-{
-    dest[0] = av_clip_uint8(dest[0] + ((block[0] + 4)>>3));
-}
-
 static void just_return(void *mem av_unused, int stride av_unused, int h av_unused) { return; }
 
 /* init static data */
@@ -2773,7 +2666,7 @@ int ff_check_alignment(void){
 
 av_cold void ff_dsputil_init(DSPContext* c, AVCodecContext *avctx)
 {
-    int i;
+    int i, j;
 
     ff_check_alignment();
 
@@ -2797,39 +2690,17 @@ av_cold void ff_dsputil_init(DSPContext* c, AVCodecContext *avctx)
     }
 #endif //CONFIG_ENCODERS
 
-    if(avctx->lowres==1){
-        c->idct_put= ff_jref_idct4_put;
-        c->idct_add= ff_jref_idct4_add;
-        c->idct    = ff_j_rev_dct4;
-        c->idct_permutation_type= FF_NO_IDCT_PERM;
-    }else if(avctx->lowres==2){
-        c->idct_put= ff_jref_idct2_put;
-        c->idct_add= ff_jref_idct2_add;
-        c->idct    = ff_j_rev_dct2;
-        c->idct_permutation_type= FF_NO_IDCT_PERM;
-    }else if(avctx->lowres==3){
-        c->idct_put= ff_jref_idct1_put;
-        c->idct_add= ff_jref_idct1_add;
-        c->idct    = ff_j_rev_dct1;
-        c->idct_permutation_type= FF_NO_IDCT_PERM;
-    }else{
-        if (avctx->bits_per_raw_sample == 10) {
-            c->idct_put              = ff_simple_idct_put_10;
-            c->idct_add              = ff_simple_idct_add_10;
-            c->idct                  = ff_simple_idct_10;
-            c->idct_permutation_type = FF_NO_IDCT_PERM;
-        } else {
+    if (avctx->bits_per_raw_sample == 10) {
+        c->idct_put              = ff_simple_idct_put_10;
+        c->idct_add              = ff_simple_idct_add_10;
+        c->idct                  = ff_simple_idct_10;
+        c->idct_permutation_type = FF_NO_IDCT_PERM;
+    } else {
         if(avctx->idct_algo==FF_IDCT_INT){
             c->idct_put= ff_jref_idct_put;
             c->idct_add= ff_jref_idct_add;
             c->idct    = ff_j_rev_dct;
             c->idct_permutation_type= FF_LIBMPEG2_IDCT_PERM;
-        }else if((CONFIG_VP3_DECODER || CONFIG_VP5_DECODER || CONFIG_VP6_DECODER ) &&
-                avctx->idct_algo==FF_IDCT_VP3){
-            c->idct_put= ff_vp3_idct_put_c;
-            c->idct_add= ff_vp3_idct_add_c;
-            c->idct    = ff_vp3_idct_c;
-            c->idct_permutation_type= FF_NO_IDCT_PERM;
         }else if(avctx->idct_algo==FF_IDCT_WMV2){
             c->idct_put= ff_wmv2_idct_put_c;
             c->idct_add= ff_wmv2_idct_add_c;
@@ -2848,7 +2719,6 @@ av_cold void ff_dsputil_init(DSPContext* c, AVCodecContext *avctx)
             c->idct_add = ff_simple_idct_add_8;
             c->idct     = ff_simple_idct_8;
             c->idct_permutation_type= FF_NO_IDCT_PERM;
-        }
         }
     }
 
@@ -2991,12 +2861,6 @@ av_cold void ff_dsputil_init(DSPContext* c, AVCodecContext *avctx)
         c->h263_v_loop_filter= h263_v_loop_filter_c;
     }
 
-    if (CONFIG_VP3_DECODER) {
-        c->vp3_h_loop_filter= ff_vp3_h_loop_filter_c;
-        c->vp3_v_loop_filter= ff_vp3_v_loop_filter_c;
-        c->vp3_idct_dc_add= ff_vp3_idct_dc_add_c;
-    }
-
     c->h261_loop_filter= h261_loop_filter_c;
 
     c->try_8x8basis= try_8x8basis_c;
@@ -3008,7 +2872,6 @@ av_cold void ff_dsputil_init(DSPContext* c, AVCodecContext *avctx)
 #if CONFIG_AC3_DECODER
     c->ac3_downmix = ff_ac3_downmix_c;
 #endif
-    c->vector_fmul = vector_fmul_c;
     c->vector_fmul_reverse = vector_fmul_reverse_c;
     c->vector_fmul_add = vector_fmul_add_c;
     c->vector_fmul_window = vector_fmul_window_c;
@@ -3021,7 +2884,6 @@ av_cold void ff_dsputil_init(DSPContext* c, AVCodecContext *avctx)
     c->butterflies_float = butterflies_float_c;
     c->butterflies_float_interleave = butterflies_float_interleave_c;
     c->vector_fmul_scalar = vector_fmul_scalar_c;
-    c->vector_fmac_scalar = vector_fmac_scalar_c;
 
     c->shrink[0]= av_image_copy_plane;
     c->shrink[1]= ff_shrink22;
@@ -3132,11 +2994,15 @@ av_cold void ff_dsputil_init(DSPContext* c, AVCodecContext *avctx)
     if (ARCH_SH4)        ff_dsputil_init_sh4   (c, avctx);
     if (ARCH_BFIN)       ff_dsputil_init_bfin  (c, avctx);
 
-    for(i=0; i<64; i++){
-        if(!c->put_2tap_qpel_pixels_tab[0][i])
-            c->put_2tap_qpel_pixels_tab[0][i]= c->put_h264_qpel_pixels_tab[0][i];
-        if(!c->avg_2tap_qpel_pixels_tab[0][i])
-            c->avg_2tap_qpel_pixels_tab[0][i]= c->avg_h264_qpel_pixels_tab[0][i];
+    for (i = 0; i < 4; i++) {
+        for (j = 0; j < 16; j++) {
+            if(!c->put_2tap_qpel_pixels_tab[i][j])
+                c->put_2tap_qpel_pixels_tab[i][j] =
+                    c->put_h264_qpel_pixels_tab[i][j];
+            if(!c->avg_2tap_qpel_pixels_tab[i][j])
+                c->avg_2tap_qpel_pixels_tab[i][j] =
+                    c->avg_h264_qpel_pixels_tab[i][j];
+        }
     }
 
     ff_init_scantable_permutation(c->idct_permutation,

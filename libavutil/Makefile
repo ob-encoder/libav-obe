@@ -9,6 +9,7 @@ HEADERS = adler32.h                                                     \
           avstring.h                                                    \
           avutil.h                                                      \
           base64.h                                                      \
+          blowfish.h                                                    \
           bswap.h                                                       \
           common.h                                                      \
           cpu.h                                                         \
@@ -36,6 +37,14 @@ HEADERS = adler32.h                                                     \
           rational.h                                                    \
           samplefmt.h                                                   \
           sha.h                                                         \
+          time.h                                                        \
+          version.h                                                     \
+          xtea.h                                                        \
+
+ARCH_HEADERS = bswap.h                                                  \
+               intmath.h                                                \
+               intreadwrite.h                                           \
+               timer.h                                                  \
 
 BUILT_HEADERS = avconfig.h
 
@@ -45,6 +54,7 @@ OBJS = adler32.o                                                        \
        audioconvert.o                                                   \
        avstring.o                                                       \
        base64.o                                                         \
+       blowfish.o                                                       \
        cpu.o                                                            \
        crc.o                                                            \
        des.o                                                            \
@@ -52,6 +62,7 @@ OBJS = adler32.o                                                        \
        eval.o                                                           \
        fifo.o                                                           \
        file.o                                                           \
+       float_dsp.o                                                      \
        imgutils.o                                                       \
        intfloat_readwrite.o                                             \
        inverse.o                                                        \
@@ -71,10 +82,26 @@ OBJS = adler32.o                                                        \
        rc4.o                                                            \
        samplefmt.o                                                      \
        sha.o                                                            \
+       time.o                                                           \
        tree.o                                                           \
        utils.o                                                          \
+       xtea.o                                                           \
 
-TESTPROGS = adler32 aes avstring base64 cpu crc des eval fifo lfg lls \
-            md5 opt parseutils sha tree
-
-ARCH_HEADERS = bswap.h intmath.h intreadwrite.h timer.h
+TESTPROGS = adler32                                                     \
+            aes                                                         \
+            avstring                                                    \
+            base64                                                      \
+            blowfish                                                    \
+            cpu                                                         \
+            crc                                                         \
+            des                                                         \
+            eval                                                        \
+            fifo                                                        \
+            lfg                                                         \
+            lls                                                         \
+            md5                                                         \
+            opt                                                         \
+            parseutils                                                  \
+            sha                                                         \
+            tree                                                        \
+            xtea                                                        \

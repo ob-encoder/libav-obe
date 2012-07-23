@@ -29,6 +29,7 @@
 #include "internal.h"
 #include "riff.h"
 #include "isom.h"
+#include "mov_chan.h"
 #include "libavutil/intreadwrite.h"
 #include "libavutil/intfloat.h"
 #include "libavutil/dict.h"
@@ -121,18 +122,40 @@ static int read_kuki_chunk(AVFormatContext *s, int64_t size)
     } else if (st->codec->codec_id == CODEC_ID_ALAC) {
 #define ALAC_PREAMBLE 12
 #define ALAC_HEADER   36
-        if (size < ALAC_PREAMBLE + ALAC_HEADER) {
+#define ALAC_NEW_KUKI 24
+        uint8_t preamble[12];
+        if (size < ALAC_NEW_KUKI) {
             av_log(s, AV_LOG_ERROR, "invalid ALAC magic cookie\n");
             avio_skip(pb, size);
             return AVERROR_INVALIDDATA;
         }
-        avio_skip(pb, ALAC_PREAMBLE);
+        avio_read(pb, preamble, ALAC_PREAMBLE);
+
         st->codec->extradata = av_mallocz(ALAC_HEADER + FF_INPUT_BUFFER_PADDING_SIZE);
         if (!st->codec->extradata)
             return AVERROR(ENOMEM);
-        avio_read(pb, st->codec->extradata, ALAC_HEADER);
+
+        /* For the old style cookie, we skip 12 bytes, then read 36 bytes.
+         * The new style cookie only contains the last 24 bytes of what was
+         * 36 bytes in the old style cookie, so we fabricate the first 12 bytes
+         * in that case to maintain compatibility. */
+        if (!memcmp(&preamble[4], "frmaalac", 8)) {
+            if (size < ALAC_PREAMBLE + ALAC_HEADER) {
+                av_log(s, AV_LOG_ERROR, "invalid ALAC magic cookie\n");
+                av_freep(&st->codec->extradata);
+                return AVERROR_INVALIDDATA;
+            }
+            avio_read(pb, st->codec->extradata, ALAC_HEADER);
+            avio_skip(pb, size - ALAC_PREAMBLE - ALAC_HEADER);
+        } else {
+            AV_WB32(st->codec->extradata, 36);
+            memcpy(&st->codec->extradata[4], "alac", 4);
+            AV_WB32(&st->codec->extradata[8], 0);
+            memcpy(&st->codec->extradata[12], preamble, 12);
+            avio_read(pb, &st->codec->extradata[24], ALAC_NEW_KUKI - 12);
+            avio_skip(pb, size - ALAC_NEW_KUKI);
+        }
         st->codec->extradata_size = ALAC_HEADER;
-        avio_skip(pb, size - ALAC_PREAMBLE - ALAC_HEADER);
     } else {
         st->codec->extradata = av_mallocz(size + FF_INPUT_BUFFER_PADDING_SIZE);
         if (!st->codec->extradata)
@@ -150,8 +173,8 @@ static int read_pakt_chunk(AVFormatContext *s, int64_t size)
     AVIOContext *pb = s->pb;
     AVStream *st      = s->streams[0];
     CaffContext *caf  = s->priv_data;
-    int64_t pos = 0, ccount;
-    int num_packets, i;
+    int64_t pos = 0, ccount, num_packets;
+    int i;
 
     ccount = avio_tell(pb);
 
@@ -170,10 +193,11 @@ static int read_pakt_chunk(AVFormatContext *s, int64_t size)
         st->duration += caf->frames_per_packet ? caf->frames_per_packet : ff_mp4_read_descr_len(pb);
     }
 
-    if (avio_tell(pb) - ccount != size) {
+    if (avio_tell(pb) - ccount > size) {
         av_log(s, AV_LOG_ERROR, "error reading packet table\n");
-        return -1;
+        return AVERROR_INVALIDDATA;
     }
+    avio_skip(pb, ccount + size - avio_tell(pb));
 
     caf->num_bytes = pos;
     return 0;
@@ -241,6 +265,11 @@ static int read_header(AVFormatContext *s)
             if (caf->data_size > 0 && pb->seekable)
                 avio_skip(pb, caf->data_size);
             found_data = 1;
+            break;
+
+        case MKBETAG('c','h','a','n'):
+            if ((ret = ff_mov_read_chan(s, st, size)) < 0)
+                return ret;
             break;
 
         /* magic cookie chunk */
@@ -394,5 +423,5 @@ AVInputFormat ff_caf_demuxer = {
     .read_header    = read_header,
     .read_packet    = read_packet,
     .read_seek      = read_seek,
-    .codec_tag      = (const AVCodecTag*[]){ ff_codec_caf_tags, 0 },
+    .codec_tag      = (const AVCodecTag* const []){ ff_codec_caf_tags, 0 },
 };

@@ -73,6 +73,10 @@ const char *avfilter_configuration(void)
 @}
 @end example
 @item
+Do not check for NULL values by comparison, @samp{if (p)} and
+@samp{if (!p)} are correct; @samp{if (p == NULL)} and @samp{if (p != NULL)}
+are not.
+@item
 In case of a single-statement if, no curly braces are required:
 @example
 if (!pic || !picref)
@@ -428,9 +432,7 @@ send a reminder by email. Your patch should eventually be dealt with.
 
 @enumerate
 @item
-    Does @code{make fate} pass with the patch applied?
-@item
-    Does @code{make checkheaders} pass with the patch applied?
+    Does @code{make check} pass with the patch applied?
 @item
     Is the patch against latest Libav git master branch?
 @item
@@ -486,6 +488,10 @@ send a reminder by email. Your patch should eventually be dealt with.
 @item
     Lines with similar content should be aligned vertically when doing so
     improves readability.
+@item
+    Make sure you check the return values of function and return appropriate
+    error codes. Especially memory allocation functions like @code{malloc()}
+    are notoriously left unchecked, which is a serious problem.
 @end enumerate
 
 @section Patch review process

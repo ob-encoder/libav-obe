@@ -26,6 +26,7 @@
 #include <math.h>
 
 #define BITSTREAM_READER_LE
+#include "libavutil/float_dsp.h"
 #include "avcodec.h"
 #include "get_bits.h"
 #include "dsputil.h"
@@ -124,6 +125,7 @@ typedef struct vorbis_context_s {
     AVFrame frame;
     GetBitContext gb;
     DSPContext dsp;
+    AVFloatDSPContext fdsp;
     FmtConvertContext fmt_conv;
 
     FFTContext mdct[2];
@@ -574,7 +576,11 @@ static int vorbis_parse_setup_hdr_floors(vorbis_context *vc)
             }
 
 // Precalculate order of x coordinates - needed for decode
-            ff_vorbis_ready_floor1_list(floor_setup->data.t1.list, floor_setup->data.t1.x_list_dim);
+            if (ff_vorbis_ready_floor1_list(vc->avccontext,
+                                            floor_setup->data.t1.list,
+                                            floor_setup->data.t1.x_list_dim)) {
+                return AVERROR_INVALIDDATA;
+            }
         } else if (floor_setup->floor_type == 0) {
             unsigned max_codebook_dim = 0;
 
@@ -979,6 +985,7 @@ static av_cold int vorbis_decode_init(AVCodecContext *avccontext)
 
     vc->avccontext = avccontext;
     ff_dsputil_init(&vc->dsp, avccontext);
+    avpriv_float_dsp_init(&vc->fdsp, avccontext->flags & CODEC_FLAG_BITEXACT);
     ff_fmt_convert_init(&vc->fmt_conv, avccontext);
 
     if (avccontext->request_sample_fmt == AV_SAMPLE_FMT_FLT) {
@@ -1402,17 +1409,24 @@ static av_always_inline int vorbis_residue_decode_internal(vorbis_context *vc,
                                 }
 
                             } else if (vr_type == 2) {
-                                voffs = voffset;
+                                unsigned voffs_div = FASTDIV(voffset, ch);
+                                unsigned voffs_mod = voffset - voffs_div * ch;
 
                                 for (k = 0; k < step; ++k) {
                                     coffs = get_vlc2(gb, codebook.vlc.table, codebook.nb_bits, 3) * dim;
-                                    for (l = 0; l < dim; ++l, ++voffs) {
-                                        vec[voffs / ch + (voffs % ch) * vlen] += codebook.codevectors[coffs + l];  // FPMATH FIXME use if and counter instead of / and %
+                                    for (l = 0; l < dim; ++l) {
+                                        vec[voffs_div + voffs_mod * vlen] +=
+                                            codebook.codevectors[coffs + l];
 
                                         av_dlog(NULL, " pass %d offs: %d curr: %f change: %f cv offs.: %d+%d  \n",
-                                                pass, voffset / ch + (voffs % ch) * vlen,
-                                                vec[voffset / ch + (voffs % ch) * vlen],
+                                                pass, voffs_div + voffs_mod * vlen,
+                                                vec[voffs_div + voffs_mod * vlen],
                                                 codebook.codevectors[coffs + l], coffs, l);
+
+                                        if (++voffs_mod == ch) {
+                                            voffs_div++;
+                                            voffs_mod = 0;
+                                        }
                                     }
                                 }
                             }
@@ -1601,7 +1615,7 @@ static int vorbis_parse_audio_packet(vorbis_context *vc)
     for (j = vc->audio_channels-1;j >= 0; j--) {
         ch_floor_ptr = vc->channel_floors   + j           * blocksize / 2;
         ch_res_ptr   = vc->channel_residues + res_chan[j] * blocksize / 2;
-        vc->dsp.vector_fmul(ch_floor_ptr, ch_floor_ptr, ch_res_ptr, blocksize / 2);
+        vc->fdsp.vector_fmul(ch_floor_ptr, ch_floor_ptr, ch_res_ptr, blocksize / 2);
         mdct->imdct_half(mdct, ch_res_ptr, ch_floor_ptr);
     }
 

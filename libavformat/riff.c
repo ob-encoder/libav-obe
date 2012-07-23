@@ -284,6 +284,10 @@ const AVCodecTag ff_codec_bmp_tags[] = {
     { CODEC_ID_VBLE,         MKTAG('V', 'B', 'L', 'E') },
     { CODEC_ID_DXTORY,       MKTAG('x', 't', 'o', 'r') },
     { CODEC_ID_ZEROCODEC,    MKTAG('Z', 'E', 'C', 'O') },
+    { CODEC_ID_MSS1,         MKTAG('M', 'S', 'S', '1') },
+    { CODEC_ID_MSA1,         MKTAG('M', 'S', 'A', '1') },
+    { CODEC_ID_TSCC2,        MKTAG('T', 'S', 'C', '2') },
+    { CODEC_ID_MTS2,         MKTAG('M', 'T', 'S', '2') },
     { CODEC_ID_NONE,         0 }
 };
 
@@ -322,6 +326,7 @@ const AVCodecTag ff_codec_wav_tags[] = {
     { CODEC_ID_ATRAC3,          0x0270 },
     { CODEC_ID_ADPCM_G722,      0x028F },
     { CODEC_ID_IMC,             0x0401 },
+    { CODEC_ID_IAC,             0x0402 },
     { CODEC_ID_GSM_MS,          0x1500 },
     { CODEC_ID_TRUESPEECH,      0x1501 },
     { CODEC_ID_AAC,             0x1600 }, /* ADTS AAC */

@@ -354,9 +354,14 @@ static int decode_header(SnowContext *s){
 
 static av_cold int decode_init(AVCodecContext *avctx)
 {
+    int ret;
+
     avctx->pix_fmt= PIX_FMT_YUV420P;
 
-    ff_snow_common_init(avctx);
+    if ((ret = ff_snow_common_init(avctx)) < 0) {
+        ff_snow_common_end(avctx->priv_data);
+        return ret;
+    }
 
     return 0;
 }
@@ -396,7 +401,12 @@ static int decode_frame(AVCodecContext *avctx, void *data, int *data_size, AVPac
 
     // realloc slice buffer for the case that spatial_decomposition_count changed
     ff_slice_buffer_destroy(&s->sb);
-    ff_slice_buffer_init(&s->sb, s->plane[0].height, (MB_SIZE >> s->block_max_depth) + s->spatial_decomposition_count * 8 + 1, s->plane[0].width, s->spatial_idwt_buffer);
+    if ((res = ff_slice_buffer_init(&s->sb, s->plane[0].height,
+                                    (MB_SIZE >> s->block_max_depth) +
+                                    s->spatial_decomposition_count * 8 + 1,
+                                    s->plane[0].width,
+                                    s->spatial_idwt_buffer)) < 0)
+        return res;
 
     for(plane_index=0; plane_index<3; plane_index++){
         Plane *p= &s->plane[plane_index];
@@ -497,7 +507,7 @@ static int decode_frame(AVCodecContext *avctx, void *data, int *data_size, AVPac
             }
 
             for(; yd<slice_h; yd+=4){
-                ff_spatial_idwt_buffered_slice(&s->dwt, cs, &s->sb, w, h, 1, s->spatial_decomposition_type, s->spatial_decomposition_count, yd);
+                ff_spatial_idwt_buffered_slice(&s->dwt, cs, &s->sb, s->temp_idwt_buffer, w, h, 1, s->spatial_decomposition_type, s->spatial_decomposition_count, yd);
             }
 
             if(s->qlog == LOSSLESS_QLOG){

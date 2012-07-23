@@ -25,16 +25,19 @@
  * Started from sample code by Juan J. Sierralta P.
  */
 
+#include "config.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
-#include <sys/time.h>
+#if HAVE_UNISTD_H
 #include <unistd.h>
+#endif
 #include <math.h>
 
 #include "libavutil/cpu.h"
 #include "libavutil/common.h"
 #include "libavutil/lfg.h"
+#include "libavutil/time.h"
 
 #include "simple_idct.h"
 #include "aandcttab.h"
@@ -143,13 +146,6 @@ static const struct algo idct_tab[] = {
 
 #define AANSCALE_BITS 12
 
-static int64_t gettime(void)
-{
-    struct timeval tv;
-    gettimeofday(&tv, NULL);
-    return (int64_t)tv.tv_sec * 1000000 + tv.tv_usec;
-}
-
 #define NB_ITS 20000
 #define NB_ITS_SPEED 50000
 
@@ -180,14 +176,6 @@ static void idct_mmx_init(void)
 
 DECLARE_ALIGNED(16, static DCTELEM, block)[64];
 DECLARE_ALIGNED(8,  static DCTELEM, block1)[64];
-
-static inline void mmx_emms(void)
-{
-#if HAVE_MMX
-    if (cpu_flags & AV_CPU_FLAG_MMX)
-        __asm__ volatile ("emms\n\t");
-#endif
-}
 
 static void init_block(DCTELEM block[64], int test, int is_idct, AVLFG *prng)
 {
@@ -263,7 +251,7 @@ static int dct_error(const struct algo *dct, int test, int is_idct, int speed)
         permute(block, block1, dct->format);
 
         dct->func(block);
-        mmx_emms();
+        emms_c();
 
         if (dct->format == SCALE_PERM) {
             for (i = 0; i < 64; i++) {
@@ -320,7 +308,7 @@ static int dct_error(const struct algo *dct, int test, int is_idct, int speed)
     init_block(block, test, is_idct, &prng);
     permute(block1, block, dct->format);
 
-    ti = gettime();
+    ti = av_gettime();
     it1 = 0;
     do {
         for (it = 0; it < NB_ITS_SPEED; it++) {
@@ -328,9 +316,9 @@ static int dct_error(const struct algo *dct, int test, int is_idct, int speed)
             dct->func(block);
         }
         it1 += NB_ITS_SPEED;
-        ti1 = gettime() - ti;
+        ti1 = av_gettime() - ti;
     } while (ti1 < 1000000);
-    mmx_emms();
+    emms_c();
 
     printf("%s %s: %0.1f kdct/s\n", is_idct ? "IDCT" : "DCT", dct->name,
            (double) it1 * 1000.0 / (double) ti1);
@@ -461,7 +449,7 @@ static void idct248_error(const char *name,
     if (!speed)
         return;
 
-    ti = gettime();
+    ti = av_gettime();
     it1 = 0;
     do {
         for (it = 0; it < NB_ITS_SPEED; it++) {
@@ -470,9 +458,9 @@ static void idct248_error(const char *name,
             idct248_put(img_dest, 8, block);
         }
         it1 += NB_ITS_SPEED;
-        ti1 = gettime() - ti;
+        ti1 = av_gettime() - ti;
     } while (ti1 < 1000000);
-    mmx_emms();
+    emms_c();
 
     printf("%s %s: %0.1f kdct/s\n", 1 ? "IDCT248" : "DCT248", name,
            (double) it1 * 1000.0 / (double) ti1);
@@ -488,6 +476,10 @@ static void help(void)
            "-4          test IDCT248 implementations\n"
            "-t          speed test\n");
 }
+
+#if !HAVE_GETOPT
+#include "compat/getopt.c"
+#endif
 
 int main(int argc, char **argv)
 {

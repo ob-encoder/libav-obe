@@ -99,6 +99,7 @@ void av_register_all(void)
     REGISTER_MUXER    (FRAMECRC, framecrc);
     REGISTER_MUXER    (FRAMEMD5, framemd5);
     REGISTER_MUXDEMUX (G722, g722);
+    REGISTER_DEMUXER  (G723_1, g723_1);
     REGISTER_MUXER    (GIF, gif);
     REGISTER_DEMUXER  (GSM, gsm);
     REGISTER_MUXDEMUX (GXF, gxf);
@@ -108,6 +109,7 @@ void av_register_all(void)
     REGISTER_DEMUXER  (HLS, hls);
     REGISTER_DEMUXER  (IDCIN, idcin);
     REGISTER_DEMUXER  (IFF, iff);
+    REGISTER_MUXDEMUX (ILBC, ilbc);
     REGISTER_MUXDEMUX (IMAGE2, image2);
     REGISTER_MUXDEMUX (IMAGE2PIPE, image2pipe);
     REGISTER_DEMUXER  (INGENIENT, ingenient);
@@ -245,6 +247,7 @@ void av_register_all(void)
 #endif
     REGISTER_PROTOCOL (CONCAT, concat);
     REGISTER_PROTOCOL (CRYPTO, crypto);
+    REGISTER_PROTOCOL (FFRTMPHTTP, ffrtmphttp);
     REGISTER_PROTOCOL (FILE, file);
     REGISTER_PROTOCOL (GOPHER, gopher);
     REGISTER_PROTOCOL (HLS, hls);
@@ -256,13 +259,16 @@ void av_register_all(void)
     REGISTER_PROTOCOL (MD5,  md5);
     REGISTER_PROTOCOL (PIPE, pipe);
     REGISTER_PROTOCOL (RTMP, rtmp);
+    REGISTER_PROTOCOL (RTMPS, rtmps);
+    REGISTER_PROTOCOL (RTMPT, rtmpt);
+    REGISTER_PROTOCOL (RTMPTS, rtmpts);
     REGISTER_PROTOCOL (RTP, rtp);
+    REGISTER_PROTOCOL (SCTP, sctp);
     REGISTER_PROTOCOL (TCP, tcp);
     REGISTER_PROTOCOL (TLS, tls);
     REGISTER_PROTOCOL (UDP, udp);
 
     /* external libraries */
-    REGISTER_MUXDEMUX (LIBNUT, libnut);
     REGISTER_PROTOCOL (LIBRTMP, librtmp);
     REGISTER_PROTOCOL (LIBRTMPE, librtmpe);
     REGISTER_PROTOCOL (LIBRTMPS, librtmps);

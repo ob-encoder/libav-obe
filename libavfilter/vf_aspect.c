@@ -25,12 +25,14 @@
 
 #include "libavutil/mathematics.h"
 #include "avfilter.h"
+#include "internal.h"
+#include "video.h"
 
 typedef struct {
     AVRational aspect;
 } AspectContext;
 
-static av_cold int init(AVFilterContext *ctx, const char *args, void *opaque)
+static av_cold int init(AVFilterContext *ctx, const char *args)
 {
     AspectContext *aspect = ctx->priv;
     double  ratio;
@@ -58,16 +60,17 @@ static av_cold int init(AVFilterContext *ctx, const char *args, void *opaque)
     if (aspect->aspect.den == 0)
         aspect->aspect = (AVRational) {0, 1};
 
-    av_log(ctx, AV_LOG_INFO, "a:%d/%d\n", aspect->aspect.num, aspect->aspect.den);
+    av_log(ctx, AV_LOG_VERBOSE, "a:%d/%d\n", aspect->aspect.num, aspect->aspect.den);
     return 0;
 }
 
-static void start_frame(AVFilterLink *link, AVFilterBufferRef *picref)
+static int start_frame(AVFilterLink *link, AVFilterBufferRef *picref)
 {
     AspectContext *aspect = link->dst->priv;
 
     picref->video->pixel_aspect = aspect->aspect;
-    avfilter_start_frame(link->dst->outputs[0], picref);
+    link->cur_buf = NULL;
+    return ff_start_frame(link->dst->outputs[0], picref);
 }
 
 #if CONFIG_SETDAR_FILTER
@@ -81,7 +84,7 @@ static int setdar_config_props(AVFilterLink *inlink)
                aspect->aspect.num * inlink->h,
                aspect->aspect.den * inlink->w, 100);
 
-    av_log(inlink->dst, AV_LOG_INFO, "w:%d h:%d -> dar:%d/%d sar:%d/%d\n",
+    av_log(inlink->dst, AV_LOG_VERBOSE, "w:%d h:%d -> dar:%d/%d sar:%d/%d\n",
            inlink->w, inlink->h, dar.num, dar.den, aspect->aspect.num, aspect->aspect.den);
 
     inlink->sample_aspect_ratio = aspect->aspect;
@@ -97,17 +100,17 @@ AVFilter avfilter_vf_setdar = {
 
     .priv_size = sizeof(AspectContext),
 
-    .inputs    = (AVFilterPad[]) {{ .name             = "default",
-                                    .type             = AVMEDIA_TYPE_VIDEO,
-                                    .config_props     = setdar_config_props,
-                                    .get_video_buffer = avfilter_null_get_video_buffer,
-                                    .start_frame      = start_frame,
-                                    .end_frame        = avfilter_null_end_frame },
-                                  { .name = NULL}},
+    .inputs    = (const AVFilterPad[]) {{ .name             = "default",
+                                          .type             = AVMEDIA_TYPE_VIDEO,
+                                          .config_props     = setdar_config_props,
+                                          .get_video_buffer = ff_null_get_video_buffer,
+                                          .start_frame      = start_frame,
+                                          .end_frame        = ff_null_end_frame },
+                                        { .name = NULL}},
 
-    .outputs   = (AVFilterPad[]) {{ .name             = "default",
-                                    .type             = AVMEDIA_TYPE_VIDEO, },
-                                  { .name = NULL}},
+    .outputs   = (const AVFilterPad[]) {{ .name             = "default",
+                                          .type             = AVMEDIA_TYPE_VIDEO, },
+                                        { .name = NULL}},
 };
 #endif /* CONFIG_SETDAR_FILTER */
 
@@ -130,16 +133,16 @@ AVFilter avfilter_vf_setsar = {
 
     .priv_size = sizeof(AspectContext),
 
-    .inputs    = (AVFilterPad[]) {{ .name             = "default",
-                                    .type             = AVMEDIA_TYPE_VIDEO,
-                                    .config_props     = setsar_config_props,
-                                    .get_video_buffer = avfilter_null_get_video_buffer,
-                                    .start_frame      = start_frame,
-                                    .end_frame        = avfilter_null_end_frame },
-                                  { .name = NULL}},
+    .inputs    = (const AVFilterPad[]) {{ .name             = "default",
+                                          .type             = AVMEDIA_TYPE_VIDEO,
+                                          .config_props     = setsar_config_props,
+                                          .get_video_buffer = ff_null_get_video_buffer,
+                                          .start_frame      = start_frame,
+                                          .end_frame        = ff_null_end_frame },
+                                        { .name = NULL}},
 
-    .outputs   = (AVFilterPad[]) {{ .name             = "default",
-                                    .type             = AVMEDIA_TYPE_VIDEO, },
-                                  { .name = NULL}},
+    .outputs   = (const AVFilterPad[]) {{ .name             = "default",
+                                          .type             = AVMEDIA_TYPE_VIDEO, },
+                                        { .name = NULL}},
 };
 #endif /* CONFIG_SETSAR_FILTER */

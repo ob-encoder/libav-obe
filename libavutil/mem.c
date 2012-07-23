@@ -68,8 +68,6 @@ void *av_malloc(size_t size)
     long diff;
 #endif
 
-    assert(size);
-
     /* let's disallow possible ambiguous cases */
     if (size > (INT_MAX-32) || !size)
         return NULL;
@@ -84,6 +82,8 @@ void *av_malloc(size_t size)
 #elif HAVE_POSIX_MEMALIGN
     if (posix_memalign(&ptr,32,size))
         ptr = NULL;
+#elif HAVE_ALIGNED_MALLOC
+    ptr = _aligned_malloc(size, 32);
 #elif HAVE_MEMALIGN
     ptr = memalign(32,size);
     /* Why 64?
@@ -131,6 +131,8 @@ void *av_realloc(void *ptr, size_t size)
     if(!ptr) return av_malloc(size);
     diff= ((char*)ptr)[-1];
     return (char*)realloc((char*)ptr - diff, size + diff) + diff;
+#elif HAVE_ALIGNED_MALLOC
+    return _aligned_realloc(ptr, size, 32);
 #else
     return realloc(ptr, size);
 #endif
@@ -141,6 +143,8 @@ void av_free(void *ptr)
 #if CONFIG_MEMALIGN_HACK
     if (ptr)
         free((char*)ptr - ((char*)ptr)[-1]);
+#elif HAVE_ALIGNED_MALLOC
+    _aligned_free(ptr);
 #else
     free(ptr);
 #endif

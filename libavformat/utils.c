@@ -38,8 +38,6 @@
 #include "riff.h"
 #include "audiointerleave.h"
 #include "url.h"
-#include <sys/time.h>
-#include <time.h>
 #include <stdarg.h>
 #if CONFIG_NETWORK
 #include "network.h"
@@ -218,7 +216,7 @@ AVOutputFormat *av_guess_format(const char *short_name, const char *filename,
     score_max = 0;
     while ((fmt = av_oformat_next(fmt))) {
         score = 0;
-        if (fmt->name && short_name && !strcmp(fmt->name, short_name))
+        if (fmt->name && short_name && !av_strcasecmp(fmt->name, short_name))
             score += 100;
         if (fmt->mime_type && mime_type && !strcmp(fmt->mime_type, mime_type))
             score += 10;
@@ -557,7 +555,7 @@ int avformat_open_input(AVFormatContext **ps, const char *filename, AVInputForma
     }
 
     s->duration = s->start_time = AV_NOPTS_VALUE;
-    av_strlcpy(s->filename, filename, sizeof(s->filename));
+    av_strlcpy(s->filename, filename ? filename : "", sizeof(s->filename));
 
     /* allocate private data */
     if (s->iformat->priv_data_size > 0) {
@@ -612,6 +610,34 @@ fail:
 
 /*******************************************************/
 
+static void probe_codec(AVFormatContext *s, AVStream *st, const AVPacket *pkt)
+{
+    if(st->codec->codec_id == CODEC_ID_PROBE){
+        AVProbeData *pd = &st->probe_data;
+        av_log(s, AV_LOG_DEBUG, "probing stream %d\n", st->index);
+        --st->probe_packets;
+
+        if (pkt) {
+            pd->buf = av_realloc(pd->buf, pd->buf_size+pkt->size+AVPROBE_PADDING_SIZE);
+            memcpy(pd->buf+pd->buf_size, pkt->data, pkt->size);
+            pd->buf_size += pkt->size;
+            memset(pd->buf+pd->buf_size, 0, AVPROBE_PADDING_SIZE);
+        } else {
+            st->probe_packets = 0;
+        }
+
+        if (!st->probe_packets ||
+            av_log2(pd->buf_size) != av_log2(pd->buf_size - pkt->size)) {
+            set_codec_from_probe_data(s, st, pd, st->probe_packets > 0 ? AVPROBE_SCORE_MAX/4 : 0);
+            if(st->codec->codec_id != CODEC_ID_PROBE){
+                pd->buf_size=0;
+                av_freep(&pd->buf);
+                av_log(s, AV_LOG_DEBUG, "probed stream %d\n", st->index);
+            }
+        }
+    }
+}
+
 int ff_read_packet(AVFormatContext *s, AVPacket *pkt)
 {
     int ret, i;
@@ -622,10 +648,14 @@ int ff_read_packet(AVFormatContext *s, AVPacket *pkt)
 
         if (pktl) {
             *pkt = pktl->pkt;
-            if(s->streams[pkt->stream_index]->codec->codec_id != CODEC_ID_PROBE ||
-               !s->streams[pkt->stream_index]->probe_packets ||
-               s->raw_packet_buffer_remaining_size < pkt->size){
-                AVProbeData *pd = &s->streams[pkt->stream_index]->probe_data;
+            st = s->streams[pkt->stream_index];
+            if (st->codec->codec_id != CODEC_ID_PROBE || !st->probe_packets ||
+                s->raw_packet_buffer_remaining_size < pkt->size) {
+                AVProbeData *pd;
+                if (st->probe_packets) {
+                    probe_codec(s, st, NULL);
+                }
+                pd = &st->probe_data;
                 av_freep(&pd->buf);
                 pd->buf_size = 0;
                 s->raw_packet_buffer = pktl->next;
@@ -640,8 +670,12 @@ int ff_read_packet(AVFormatContext *s, AVPacket *pkt)
         if (ret < 0) {
             if (!pktl || ret == AVERROR(EAGAIN))
                 return ret;
-            for (i = 0; i < s->nb_streams; i++)
-                s->streams[i]->probe_packets = 0;
+            for (i = 0; i < s->nb_streams; i++) {
+                st = s->streams[i];
+                if (st->probe_packets) {
+                    probe_codec(s, st, NULL);
+                }
+            }
             continue;
         }
 
@@ -675,26 +709,7 @@ int ff_read_packet(AVFormatContext *s, AVPacket *pkt)
         add_to_pktbuf(&s->raw_packet_buffer, pkt, &s->raw_packet_buffer_end);
         s->raw_packet_buffer_remaining_size -= pkt->size;
 
-        if(st->codec->codec_id == CODEC_ID_PROBE){
-            AVProbeData *pd = &st->probe_data;
-            av_log(s, AV_LOG_DEBUG, "probing stream %d\n", st->index);
-            --st->probe_packets;
-
-            pd->buf = av_realloc(pd->buf, pd->buf_size+pkt->size+AVPROBE_PADDING_SIZE);
-            memcpy(pd->buf+pd->buf_size, pkt->data, pkt->size);
-            pd->buf_size += pkt->size;
-            memset(pd->buf+pd->buf_size, 0, AVPROBE_PADDING_SIZE);
-
-            if(av_log2(pd->buf_size) != av_log2(pd->buf_size - pkt->size)){
-                //FIXME we do not reduce score to 0 for the case of running out of buffer space in bytes
-                set_codec_from_probe_data(s, st, pd, st->probe_packets > 0 ? AVPROBE_SCORE_MAX/4 : 0);
-                if(st->codec->codec_id != CODEC_ID_PROBE){
-                    pd->buf_size=0;
-                    av_freep(&pd->buf);
-                    av_log(s, AV_LOG_DEBUG, "probed stream %d\n", st->index);
-                }
-            }
-        }
+        probe_codec(s, st, pkt);
     }
 }
 
@@ -791,6 +806,7 @@ static int is_intra_only(AVCodecContext *enc){
         case CODEC_ID_VCR1:
         case CODEC_ID_DNXHD:
         case CODEC_ID_JPEG2000:
+        case CODEC_ID_MDEC:
             return 1;
         default: break;
         }
@@ -985,24 +1001,19 @@ static void compute_pkt_fields(AVFormatContext *s, AVStream *st,
                 }
             }
 
-            if(pkt->pts != AV_NOPTS_VALUE && duration){
-                int64_t old_diff= FFABS(st->cur_dts - duration - pkt->pts);
-                int64_t new_diff= FFABS(st->cur_dts - pkt->pts);
-                if(old_diff < new_diff && old_diff < (duration>>3)){
-                    pkt->pts += duration;
-    //                av_log(NULL, AV_LOG_DEBUG, "id:%d old:%"PRId64" new:%"PRId64" dur:%d cur:%"PRId64" size:%d\n", pkt->stream_index, old_diff, new_diff, pkt->duration, st->cur_dts, pkt->size);
-                }
+            if (pkt->pts != AV_NOPTS_VALUE || pkt->dts != AV_NOPTS_VALUE ||
+                duration) {
+                /* presentation is not delayed : PTS and DTS are the same */
+                if (pkt->pts == AV_NOPTS_VALUE)
+                    pkt->pts = pkt->dts;
+                update_initial_timestamps(s, pkt->stream_index, pkt->pts,
+                                          pkt->pts);
+                if (pkt->pts == AV_NOPTS_VALUE)
+                    pkt->pts = st->cur_dts;
+                pkt->dts = pkt->pts;
+                if (pkt->pts != AV_NOPTS_VALUE)
+                    st->cur_dts = pkt->pts + duration;
             }
-
-            /* presentation is not delayed : PTS and DTS are the same */
-            if(pkt->pts == AV_NOPTS_VALUE)
-                pkt->pts = pkt->dts;
-            update_initial_timestamps(s, pkt->stream_index, pkt->pts, pkt->pts);
-            if(pkt->pts == AV_NOPTS_VALUE)
-                pkt->pts = st->cur_dts;
-            pkt->dts = pkt->pts;
-            if(pkt->pts != AV_NOPTS_VALUE)
-                st->cur_dts = pkt->pts + duration;
         }
     }
 
@@ -1823,7 +1834,7 @@ static int has_duration(AVFormatContext *ic)
         if (st->duration != AV_NOPTS_VALUE)
             return 1;
     }
-    if (ic->duration)
+    if (ic->duration != AV_NOPTS_VALUE)
         return 1;
     return 0;
 }
@@ -2966,7 +2977,9 @@ static int compute_pkt_fields2(AVFormatContext *s, AVStream *st, AVPacket *pkt){
         pkt->dts= st->pts_buffer[0];
     }
 
-    if(st->cur_dts && st->cur_dts != AV_NOPTS_VALUE && st->cur_dts >= pkt->dts){
+    if (st->cur_dts && st->cur_dts != AV_NOPTS_VALUE &&
+        ((!(s->oformat->flags & AVFMT_TS_NONSTRICT) &&
+          st->cur_dts >= pkt->dts) || st->cur_dts > pkt->dts)) {
         av_log(s, AV_LOG_ERROR,
                "Application provided invalid, non monotonically increasing dts to muxer in stream %d: %"PRId64" >= %"PRId64"\n",
                st->index, st->cur_dts, pkt->dts);
@@ -3396,12 +3409,12 @@ void av_dump_format(AVFormatContext *ic,
     av_free(printed);
 }
 
-int64_t av_gettime(void)
+#if FF_API_AV_GETTIME && CONFIG_SHARED && HAVE_SYMVER
+FF_SYMVER(int64_t, av_gettime, (void), "LIBAVFORMAT_54")
 {
-    struct timeval tv;
-    gettimeofday(&tv,NULL);
-    return (int64_t)tv.tv_sec * 1000000 + tv.tv_usec;
+    return av_gettime();
 }
+#endif
 
 uint64_t ff_ntp_time(void)
 {

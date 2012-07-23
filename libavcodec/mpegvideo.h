@@ -696,6 +696,12 @@ typedef struct MpegEncContext {
 
     int mpv_flags;      ///< flags set by private options
     int quantizer_noise_shaping;
+
+    /* error resilience stuff */
+    uint8_t *er_temp_buffer;
+
+    /* temp buffers for rate control */
+    float *cplx_tab, *bits_tab;
 } MpegEncContext;
 
 #define REBASE_PICTURE(pic, new_ctx, old_ctx) (pic ? \
@@ -785,7 +791,7 @@ extern const enum PixelFormat ff_pixfmt_list_420[];
 extern const enum PixelFormat ff_hwaccel_pixfmt_list_420[];
 
 static inline void ff_update_block_index(MpegEncContext *s){
-    const int block_size= 8>>s->avctx->lowres;
+    const int block_size = 8;
 
     s->block_index[0]+=2;
     s->block_index[1]+=2;

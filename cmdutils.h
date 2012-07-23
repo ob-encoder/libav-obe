@@ -214,10 +214,12 @@ int check_stream_specifier(AVFormatContext *s, AVStream *st, const char *spec);
  *
  * @param s Corresponding format context.
  * @param st A stream from s for which the options should be filtered.
+ * @param codec The particular codec for which the options should be filtered.
+ *              If null, the default one is looked up according to the codec id.
  * @return a pointer to the created dictionary
  */
 AVDictionary *filter_codec_opts(AVDictionary *opts, enum CodecID codec_id,
-                                AVFormatContext *s, AVStream *st);
+                                AVFormatContext *s, AVStream *st, AVCodec *codec);
 
 /**
  * Setup AVCodecContext options for avformat_find_stream_info().
@@ -367,26 +369,11 @@ int64_t guess_correct_pts(PtsCorrectionContext *ctx, int64_t pts, int64_t dts);
 FILE *get_preset_file(char *filename, size_t filename_size,
                       const char *preset_name, int is_path, const char *codec_name);
 
-typedef struct {
-    const enum PixelFormat *pix_fmts;
-} SinkContext;
-
-extern AVFilter sink;
-
-/**
- * Extract a frame from sink.
- *
- * @return a negative error in case of failure, 1 if one frame has
- * been extracted successfully.
- */
-int get_filtered_video_frame(AVFilterContext *sink, AVFrame *frame,
-                             AVFilterBufferRef **picref, AVRational *pts_tb);
-
 /**
  * Do all the necessary cleanup and abort.
  * This function is implemented in the avtools, not cmdutils.
  */
-void exit_program(int ret);
+av_noreturn void exit_program(int ret);
 
 /**
  * Realloc array to hold new_size elements of elem_size.
@@ -398,4 +385,46 @@ void exit_program(int ret);
  */
 void *grow_array(void *array, int elem_size, int *size, int new_size);
 
+typedef struct FrameBuffer {
+    uint8_t *base[4];
+    uint8_t *data[4];
+    int  linesize[4];
+
+    int h, w;
+    enum PixelFormat pix_fmt;
+
+    int refcount;
+    struct FrameBuffer **pool;  ///< head of the buffer pool
+    struct FrameBuffer *next;
+} FrameBuffer;
+
+/**
+ * Get a frame from the pool. This is intended to be used as a callback for
+ * AVCodecContext.get_buffer.
+ *
+ * @param s codec context. s->opaque must be a pointer to the head of the
+ *          buffer pool.
+ * @param frame frame->opaque will be set to point to the FrameBuffer
+ *              containing the frame data.
+ */
+int codec_get_buffer(AVCodecContext *s, AVFrame *frame);
+
+/**
+ * A callback to be used for AVCodecContext.release_buffer along with
+ * codec_get_buffer().
+ */
+void codec_release_buffer(AVCodecContext *s, AVFrame *frame);
+
+/**
+ * A callback to be used for AVFilterBuffer.free.
+ * @param fb buffer to free. fb->priv must be a pointer to the FrameBuffer
+ *           containing the buffer data.
+ */
+void filter_release_buffer(AVFilterBuffer *fb);
+
+/**
+ * Free all the buffers in the pool. This must be called after all the
+ * buffers have been released.
+ */
+void free_buffer_pool(FrameBuffer **pool);
 #endif /* LIBAV_CMDUTILS_H */

@@ -28,7 +28,7 @@ pb_zzzzzzzz77777777: times 8 db -1
 pb_7: times 8 db 7
 pb_zzzz3333zzzzbbbb: db -1,-1,-1,-1,3,3,3,3,-1,-1,-1,-1,11,11,11,11
 pb_zz11zz55zz99zzdd: db -1,-1,1,1,-1,-1,5,5,-1,-1,9,9,-1,-1,13,13
-pb_revwords: db 14, 15, 12, 13, 10, 11, 8, 9, 6, 7, 4, 5, 2, 3, 0, 1
+pb_revwords: SHUFFLE_MASK_W 7, 6, 5, 4, 3, 2, 1, 0
 pd_16384: times 4 dd 16384
 pb_bswap32: db 3, 2, 1, 0, 7, 6, 5, 4, 11, 10, 9, 8, 15, 14, 13, 12
 
@@ -1130,6 +1130,85 @@ VECTOR_CLIP_INT32 6, 1, 0, 0
 %endif
 
 ;-----------------------------------------------------------------------------
+; void vector_fmul_reverse(float *dst, const float *src0, const float *src1,
+;                          int len)
+;-----------------------------------------------------------------------------
+%macro VECTOR_FMUL_REVERSE 0
+cglobal vector_fmul_reverse, 4,4,2, dst, src0, src1, len
+    lea       lenq, [lend*4 - 2*mmsize]
+ALIGN 16
+.loop
+%if cpuflag(avx)
+    vmovaps     xmm0, [src1q + 16]
+    vinsertf128 m0, m0, [src1q], 1
+    vshufps     m0, m0, m0, q0123
+    vmovaps     xmm1, [src1q + mmsize + 16]
+    vinsertf128 m1, m1, [src1q + mmsize], 1
+    vshufps     m1, m1, m1, q0123
+%else
+    mova    m0, [src1q]
+    mova    m1, [src1q + mmsize]
+    shufps  m0, m0, q0123
+    shufps  m1, m1, q0123
+%endif
+    mulps   m0, m0, [src0q + lenq + mmsize]
+    mulps   m1, m1, [src0q + lenq]
+    mova    [dstq + lenq + mmsize], m0
+    mova    [dstq + lenq], m1
+    add     src1q, 2*mmsize
+    sub     lenq,  2*mmsize
+    jge     .loop
+%if mmsize == 32
+    vzeroupper
+    RET
+%else
+    REP_RET
+%endif
+%endmacro
+
+INIT_XMM sse
+VECTOR_FMUL_REVERSE
+%if HAVE_AVX
+INIT_YMM avx
+VECTOR_FMUL_REVERSE
+%endif
+
+;-----------------------------------------------------------------------------
+; vector_fmul_add(float *dst, const float *src0, const float *src1,
+;                 const float *src2, int len)
+;-----------------------------------------------------------------------------
+%macro VECTOR_FMUL_ADD 0
+cglobal vector_fmul_add, 5,5,2, dst, src0, src1, src2, len
+    lea       lenq, [lend*4 - 2*mmsize]
+ALIGN 16
+.loop
+    mova    m0,   [src0q + lenq]
+    mova    m1,   [src0q + lenq + mmsize]
+    mulps   m0, m0, [src1q + lenq]
+    mulps   m1, m1, [src1q + lenq + mmsize]
+    addps   m0, m0, [src2q + lenq]
+    addps   m1, m1, [src2q + lenq + mmsize]
+    mova    [dstq + lenq], m0
+    mova    [dstq + lenq + mmsize], m1
+
+    sub     lenq,   2*mmsize
+    jge     .loop
+%if mmsize == 32
+    vzeroupper
+    RET
+%else
+    REP_RET
+%endif
+%endmacro
+
+INIT_XMM sse
+VECTOR_FMUL_ADD
+%if HAVE_AVX
+INIT_YMM avx
+VECTOR_FMUL_ADD
+%endif
+
+;-----------------------------------------------------------------------------
 ; void ff_butterflies_float_interleave(float *dst, const float *src0,
 ;                                      const float *src1, int len);
 ;-----------------------------------------------------------------------------
@@ -1174,8 +1253,10 @@ cglobal butterflies_float_interleave, 4,4,3, dst, src0, src1, len
 
 INIT_XMM sse
 BUTTERFLIES_FLOAT_INTERLEAVE
+%if HAVE_AVX
 INIT_YMM avx
 BUTTERFLIES_FLOAT_INTERLEAVE
+%endif
 
 INIT_XMM sse2
 ; %1 = aligned/unaligned

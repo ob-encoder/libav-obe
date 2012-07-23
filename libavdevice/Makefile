@@ -1,9 +1,11 @@
 NAME    = avdevice
 FFLIBS  = avformat avcodec avutil
 
-HEADERS = avdevice.h
+HEADERS = avdevice.h                                                    \
+          version.h                                                     \
 
-OBJS    = alldevices.o avdevice.o
+OBJS    = alldevices.o                                                  \
+          avdevice.o                                                    \
 
 # input/output devices
 OBJS-$(CONFIG_ALSA_INDEV)                += alsa-audio-common.o \

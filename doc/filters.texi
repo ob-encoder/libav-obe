@@ -107,9 +107,206 @@ build.
 
 Below is a description of the currently available audio filters.
 
+@section aformat
+
+Convert the input audio to one of the specified formats. The framework will
+negotiate the most appropriate format to minimize conversions.
+
+The filter accepts the following named parameters:
+@table @option
+
+@item sample_fmts
+A comma-separated list of requested sample formats.
+
+@item sample_rates
+A comma-separated list of requested sample rates.
+
+@item channel_layouts
+A comma-separated list of requested channel layouts.
+
+@end table
+
+If a parameter is omitted, all values are allowed.
+
+For example to force the output to either unsigned 8-bit or signed 16-bit stereo:
+@example
+aformat=sample_fmts\=u8\,s16:channel_layouts\=stereo
+@end example
+
+@section amix
+
+Mixes multiple audio inputs into a single output.
+
+For example
+@example
+avconv -i INPUT1 -i INPUT2 -i INPUT3 -filter_complex amix=inputs=3:duration=first:dropout_transition=3 OUTPUT
+@end example
+will mix 3 input audio streams to a single output with the same duration as the
+first input and a dropout transition time of 3 seconds.
+
+The filter accepts the following named parameters:
+@table @option
+
+@item inputs
+Number of inputs. If unspecified, it defaults to 2.
+
+@item duration
+How to determine the end-of-stream.
+@table @option
+
+@item longest
+Duration of longest input. (default)
+
+@item shortest
+Duration of shortest input.
+
+@item first
+Duration of first input.
+
+@end table
+
+@item dropout_transition
+Transition time, in seconds, for volume renormalization when an input
+stream ends. The default value is 2 seconds.
+
+@end table
+
 @section anull
 
 Pass the audio source unchanged to the output.
+
+@section asplit
+
+Split input audio into several identical outputs.
+
+The filter accepts a single parameter which specifies the number of outputs. If
+unspecified, it defaults to 2.
+
+For example
+@example
+avconv -i INPUT -filter_complex asplit=5 OUTPUT
+@end example
+will create 5 copies of the input audio.
+
+@section asyncts
+Synchronize audio data with timestamps by squeezing/stretching it and/or
+dropping samples/adding silence when needed.
+
+The filter accepts the following named parameters:
+@table @option
+
+@item compensate
+Enable stretching/squeezing the data to make it match the timestamps.
+
+@item min_delta
+Minimum difference between timestamps and audio data (in seconds) to trigger
+adding/dropping samples.
+
+@item max_comp
+Maximum compensation in samples per second.
+
+@end table
+
+@section channelsplit
+Split each channel in input audio stream into a separate output stream.
+
+This filter accepts the following named parameters:
+@table @option
+@item channel_layout
+Channel layout of the input stream. Default is "stereo".
+@end table
+
+For example, assuming a stereo input MP3 file
+@example
+avconv -i in.mp3 -filter_complex channelsplit out.mkv
+@end example
+will create an output Matroska file with two audio streams, one containing only
+the left channel and the other the right channel.
+
+To split a 5.1 WAV file into per-channel files
+@example
+avconv -i in.wav -filter_complex
+'channelsplit=channel_layout=5.1[FL][FR][FC][LFE][SL][SR]'
+-map '[FL]' front_left.wav -map '[FR]' front_right.wav -map '[FC]'
+front_center.wav -map '[LFE]' lfe.wav -map '[SL]' side_left.wav -map '[SR]'
+side_right.wav
+@end example
+
+@section channelmap
+Remap input channels to new locations.
+
+This filter accepts the following named parameters:
+@table @option
+@item channel_layout
+Channel layout of the output stream.
+
+@item map
+Map channels from input to output. The argument is a comma-separated list of
+mappings, each in the @code{@var{in_channel}-@var{out_channel}} or
+@var{in_channel} form. @var{in_channel} can be either the name of the input
+channel (e.g. FL for front left) or its index in the input channel layout.
+@var{out_channel} is the name of the output channel or its index in the output
+channel layout. If @var{out_channel} is not given then it is implicitly an
+index, starting with zero and increasing by one for each mapping.
+@end table
+
+If no mapping is present, the filter will implicitly map input channels to
+output channels preserving index.
+
+For example, assuming a 5.1+downmix input MOV file
+@example
+avconv -i in.mov -filter 'channelmap=map=DL-FL\,DR-FR' out.wav
+@end example
+will create an output WAV file tagged as stereo from the downmix channels of
+the input.
+
+To fix a 5.1 WAV improperly encoded in AAC's native channel order
+@example
+avconv -i in.wav -filter 'channelmap=1\,2\,0\,5\,3\,4:channel_layout=5.1' out.wav
+@end example
+
+@section join
+Join multiple input streams into one multi-channel stream.
+
+The filter accepts the following named parameters:
+@table @option
+
+@item inputs
+Number of input streams. Defaults to 2.
+
+@item channel_layout
+Desired output channel layout. Defaults to stereo.
+
+@item map
+Map channels from inputs to output. The argument is a comma-separated list of
+mappings, each in the @code{@var{input_idx}.@var{in_channel}-@var{out_channel}}
+form. @var{input_idx} is the 0-based index of the input stream. @var{in_channel}
+can be either the name of the input channel (e.g. FL for front left) or its
+index in the specified input stream. @var{out_channel} is the name of the output
+channel.
+@end table
+
+The filter will attempt to guess the mappings when those are not specified
+explicitly. It does so by first trying to find an unused matching input channel
+and if that fails it picks the first unused input channel.
+
+E.g. to join 3 inputs (with properly set channel layouts)
+@example
+avconv -i INPUT1 -i INPUT2 -i INPUT3 -filter_complex join=inputs=3 OUTPUT
+@end example
+
+To build a 5.1 output from 6 single-channel streams:
+@example
+avconv -i fl -i fr -i fc -i sl -i sr -i lfe -filter_complex
+'join=inputs=6:channel_layout=5.1:map=0.0-FL\,1.0-FR\,2.0-FC\,3.0-SL\,4.0-SR\,5.0-LFE'
+out
+@end example
+
+@section resample
+Convert the audio sample format, sample rate and channel layout. This filter is
+not meant to be used directly, it is inserted automatically by libavfilter
+whenever conversion is needed. Use the @var{aformat} filter to force a specific
+conversion.
 
 @c man end AUDIO FILTERS
 
@@ -145,6 +342,33 @@ anullsrc=48000:4
 anullsrc=48000:mono
 @end example
 
+@section abuffer
+Buffer audio frames, and make them available to the filter chain.
+
+This source is not intended to be part of user-supplied graph descriptions but
+for insertion by calling programs through the interface defined in
+@file{libavfilter/buffersrc.h}.
+
+It accepts the following named parameters:
+@table @option
+
+@item time_base
+Timebase which will be used for timestamps of submitted frames. It must be
+either a floating-point number or in @var{numerator}/@var{denominator} form.
+
+@item sample_rate
+Audio sample rate.
+
+@item sample_fmt
+Name of the sample format, as returned by @code{av_get_sample_fmt_name()}.
+
+@item channel_layout
+Channel layout of the audio data, in the form that can be accepted by
+@code{av_get_channel_layout()}.
+@end table
+
+All the parameters need to be explicitly defined.
+
 @c man end AUDIO SOURCES
 
 @chapter Audio Sinks
@@ -157,6 +381,13 @@ Below is a description of the currently available audio sinks.
 Null audio sink, do absolutely nothing with the input audio. It is
 mainly useful as a template and to be employed in analysis / debugging
 tools.
+
+@section abuffersink
+This sink is intended for programmatic use. Frames that arrive on this sink can
+be retrieved by the calling program using the interface defined in
+@file{libavfilter/buffersink.h}.
+
+This filter accepts no parameters.
 
 @c man end AUDIO SINKS
 
@@ -728,6 +959,19 @@ format=yuv420p
 # convert the input video to any of the formats in the list
 format=yuv420p:yuv444p:yuv410p
 @end example
+
+@section fps
+
+Convert the video to specified constant framerate by duplicating or dropping
+frames as necessary.
+
+This filter accepts the following named parameters:
+@table @option
+
+@item fps
+Desired output framerate.
+
+@end table
 
 @anchor{frei0r}
 @section frei0r
@@ -1666,6 +1910,19 @@ not specified it will use the default value of 16.
 Adding this in the beginning of filter chains should make filtering
 faster due to better use of the memory cache.
 
+@section split
+
+Split input video into several identical outputs.
+
+The filter accepts a single parameter which specifies the number of outputs. If
+unspecified, it defaults to 2.
+
+For example
+@example
+avconv -i INPUT -filter_complex split=5 OUTPUT
+@end example
+will create 5 copies of the input video.
+
 @section transpose
 
 Transpose rows with columns in the input video and optionally flip it.
@@ -2064,6 +2321,14 @@ will generate a video with a duration of 5.3 seconds, with size
 @c man begin VIDEO SINKS
 
 Below is a description of the currently available video sinks.
+
+@section buffersink
+
+Buffer video frames, and make them available to the end of the filter
+graph.
+
+This sink is intended for a programmatic use through the interface defined in
+@file{libavfilter/buffersink.h}.
 
 @section nullsink
 

@@ -388,7 +388,7 @@ static void v_block_filter(MpegEncContext *s, uint8_t *dst, int w, int h,
 
 static void guess_mv(MpegEncContext *s)
 {
-    uint8_t fixed[s->mb_stride * s->mb_height];
+    uint8_t *fixed = s->er_temp_buffer;
 #define MV_FROZEN    3
 #define MV_CHANGED   2
 #define MV_UNCHANGED 1
@@ -891,7 +891,7 @@ void ff_er_frame_end(MpegEncContext *s)
 
     /* We do not support ER of field pictures yet,
      * though it should not crash if enabled. */
-    if (!s->err_recognition || s->error_count == 0 || s->avctx->lowres ||
+    if (!s->err_recognition || s->error_count == 0                     ||
         s->avctx->hwaccel                                              ||
         s->avctx->codec->capabilities&CODEC_CAP_HWACCEL_VDPAU          ||
         s->picture_structure != PICT_FRAME                             ||

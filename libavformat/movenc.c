@@ -51,7 +51,7 @@ static const AVOption options[] = {
     { "separate_moof", "Write separate moof/mdat atoms for each track", 0, AV_OPT_TYPE_CONST, {.dbl = FF_MOV_FLAG_SEPARATE_MOOF}, INT_MIN, INT_MAX, AV_OPT_FLAG_ENCODING_PARAM, "movflags" },
     { "frag_custom", "Flush fragments on caller requests", 0, AV_OPT_TYPE_CONST, {.dbl = FF_MOV_FLAG_FRAG_CUSTOM}, INT_MIN, INT_MAX, AV_OPT_FLAG_ENCODING_PARAM, "movflags" },
     { "isml", "Create a live smooth streaming feed (for pushing to a publishing point)", 0, AV_OPT_TYPE_CONST, {.dbl = FF_MOV_FLAG_ISML}, INT_MIN, INT_MAX, AV_OPT_FLAG_ENCODING_PARAM, "movflags" },
-    FF_RTP_FLAG_OPTS(MOVMuxContext, rtp_flags)
+    FF_RTP_FLAG_OPTS(MOVMuxContext, rtp_flags),
     { "skip_iods", "Skip writing iods atom.", offsetof(MOVMuxContext, iods_skip), AV_OPT_TYPE_INT, {.dbl = 0}, 0, 1, AV_OPT_FLAG_ENCODING_PARAM},
     { "iods_audio_profile", "iods audio profile atom.", offsetof(MOVMuxContext, iods_audio_profile), AV_OPT_TYPE_INT, {.dbl = -1}, -1, 255, AV_OPT_FLAG_ENCODING_PARAM},
     { "iods_video_profile", "iods video profile atom.", offsetof(MOVMuxContext, iods_video_profile), AV_OPT_TYPE_INT, {.dbl = -1}, -1, 255, AV_OPT_FLAG_ENCODING_PARAM},
@@ -264,14 +264,6 @@ static int mov_write_extradata_tag(AVIOContext *pb, MOVTrack *track)
     return track->enc->extradata_size;
 }
 
-static int mov_write_enda_tag(AVIOContext *pb)
-{
-    avio_wb32(pb, 10);
-    ffio_wfourcc(pb, "enda");
-    avio_wb16(pb, 1); /* little endian */
-    return 10;
-}
-
 static void put_descr(AVIOContext *pb, int tag, unsigned int size)
 {
     int i = 3;
@@ -332,14 +324,6 @@ static int mov_write_esds_tag(AVIOContext *pb, MOVTrack *track) // Basic
     put_descr(pb, 0x06, 1);
     avio_w8(pb, 0x02);
     return update_size(pb, pos);
-}
-
-static int mov_pcm_le_gt16(enum CodecID codec_id)
-{
-    return codec_id == CODEC_ID_PCM_S24LE ||
-           codec_id == CODEC_ID_PCM_S32LE ||
-           codec_id == CODEC_ID_PCM_F32LE ||
-           codec_id == CODEC_ID_PCM_F64LE;
 }
 
 static int mov_write_ms_tag(AVIOContext *pb, MOVTrack *track)
@@ -403,12 +387,9 @@ static int mov_write_wave_tag(AVIOContext *pb, MOVTrack *track)
         ffio_wfourcc(pb, "mp4a");
         avio_wb32(pb, 0);
         mov_write_esds_tag(pb, track);
-    } else if (mov_pcm_le_gt16(track->enc->codec_id)) {
-        mov_write_enda_tag(pb);
     } else if (track->enc->codec_id == CODEC_ID_AMR_NB) {
         mov_write_amr_tag(pb, track);
     } else if (track->enc->codec_id == CODEC_ID_AC3) {
-        mov_write_chan_tag(pb, track);
         mov_write_ac3_tag(pb, track);
     } else if (track->enc->codec_id == CODEC_ID_ALAC) {
         mov_write_extradata_tag(pb, track);
@@ -641,8 +622,7 @@ static int mov_write_audio_tag(AVIOContext *pb, MOVTrack *track)
         track->enc->codec_id == CODEC_ID_AMR_NB ||
         track->enc->codec_id == CODEC_ID_ALAC ||
         track->enc->codec_id == CODEC_ID_ADPCM_MS ||
-        track->enc->codec_id == CODEC_ID_ADPCM_IMA_WAV ||
-        mov_pcm_le_gt16(track->enc->codec_id)))
+        track->enc->codec_id == CODEC_ID_ADPCM_IMA_WAV))
         mov_write_wave_tag(pb, track);
     else if(track->tag == MKTAG('m','p','4','a'))
         mov_write_esds_tag(pb, track);
@@ -656,6 +636,9 @@ static int mov_write_audio_tag(AVIOContext *pb, MOVTrack *track)
         mov_write_wfex_tag(pb, track);
     else if (track->vos_len > 0)
         mov_write_glbl_tag(pb, track);
+
+    if (track->mode == MODE_MOV && track->enc->codec_type == AVMEDIA_TYPE_AUDIO)
+        mov_write_chan_tag(pb, track);
 
     return update_size(pb, pos);
 }
@@ -3112,7 +3095,8 @@ static int mov_write_header(AVFormatContext *s)
         }else if(st->codec->codec_type == AVMEDIA_TYPE_AUDIO){
             track->timescale = st->codec->sample_rate;
             /* set sample_size for PCM and ADPCM */
-            if (av_get_bits_per_sample(st->codec->codec_id)) {
+            if (av_get_bits_per_sample(st->codec->codec_id) ||
+                st->codec->codec_id == CODEC_ID_ILBC) {
                 if (!st->codec->block_align) {
                     av_log(s, AV_LOG_ERROR, "track %d: codec block align is not set\n", i);
                     goto error;
@@ -3268,11 +3252,8 @@ AVOutputFormat ff_mov_muxer = {
     .extensions        = "mov",
     .priv_data_size    = sizeof(MOVMuxContext),
     .audio_codec       = CODEC_ID_AAC,
-#if CONFIG_LIBX264_ENCODER
-    .video_codec       = CODEC_ID_H264,
-#else
-    .video_codec       = CODEC_ID_MPEG4,
-#endif
+    .video_codec       = CONFIG_LIBX264_ENCODER ?
+                         CODEC_ID_H264 : CODEC_ID_MPEG4,
     .write_header      = mov_write_header,
     .write_packet      = mov_write_packet,
     .write_trailer     = mov_write_trailer,
@@ -3309,11 +3290,8 @@ AVOutputFormat ff_mp4_muxer = {
     .extensions        = "mp4",
     .priv_data_size    = sizeof(MOVMuxContext),
     .audio_codec       = CODEC_ID_AAC,
-#if CONFIG_LIBX264_ENCODER
-    .video_codec       = CODEC_ID_H264,
-#else
-    .video_codec       = CODEC_ID_MPEG4,
-#endif
+    .video_codec       = CONFIG_LIBX264_ENCODER ?
+                         CODEC_ID_H264 : CODEC_ID_MPEG4,
     .write_header      = mov_write_header,
     .write_packet      = mov_write_packet,
     .write_trailer     = mov_write_trailer,
@@ -3330,11 +3308,8 @@ AVOutputFormat ff_psp_muxer = {
     .extensions        = "mp4,psp",
     .priv_data_size    = sizeof(MOVMuxContext),
     .audio_codec       = CODEC_ID_AAC,
-#if CONFIG_LIBX264_ENCODER
-    .video_codec       = CODEC_ID_H264,
-#else
-    .video_codec       = CODEC_ID_MPEG4,
-#endif
+    .video_codec       = CONFIG_LIBX264_ENCODER ?
+                         CODEC_ID_H264 : CODEC_ID_MPEG4,
     .write_header      = mov_write_header,
     .write_packet      = mov_write_packet,
     .write_trailer     = mov_write_trailer,

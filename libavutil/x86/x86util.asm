@@ -42,10 +42,9 @@
 %endmacro
 
 %macro SBUTTERFLYPS 3
-    movaps   m%3, m%1
-    unpcklps m%1, m%2
-    unpckhps m%3, m%2
-    SWAP %2, %3
+    unpcklps m%3, m%1, m%2
+    unpckhps m%1, m%1, m%2
+    SWAP %1, %3, %2
 %endmacro
 
 %macro TRANSPOSE4x4B 5
@@ -85,13 +84,12 @@
 %macro TRANSPOSE4x4PS 5
     SBUTTERFLYPS %1, %2, %5
     SBUTTERFLYPS %3, %4, %5
-    movaps  m%5, m%1
-    movlhps m%1, m%3
-    movhlps m%3, m%5
-    movaps  m%5, m%2
-    movlhps m%2, m%4
-    movhlps m%4, m%5
-    SWAP %2, %3
+    movlhps m%5, m%1, m%3
+    movhlps m%3, m%1
+    SWAP %5, %1
+    movlhps m%5, m%2, m%4
+    movhlps m%4, m%2
+    SWAP %5, %2, %3
 %endmacro
 
 %macro TRANSPOSE8x8W 9-11
@@ -258,15 +256,26 @@
 %define ABSB ABSB_MMX
 %define ABSB2 ABSB2_MMX
 
-%macro SPLATB_MMX 3
+%macro SPLATB_LOAD 3
+%if cpuflag(ssse3)
+    movd      %1, [%2-3]
+    pshufb    %1, %3
+%else
     movd      %1, [%2-3] ;to avoid crossing a cacheline
     punpcklbw %1, %1
     SPLATW    %1, %1, 3
+%endif
 %endmacro
 
-%macro SPLATB_SSSE3 3
-    movd      %1, [%2-3]
+%macro SPLATB_REG 3
+%if cpuflag(ssse3)
+    movd      %1, %2d
     pshufb    %1, %3
+%else
+    movd      %1, %2d
+    punpcklbw %1, %1
+    SPLATW    %1, %1, 0
+%endif
 %endmacro
 
 %macro PALIGNR_MMX 4-5 ; [dst,] src1, src2, imm, tmp
@@ -296,6 +305,14 @@
 %else
     palignr %1, %2, %3
 %endif
+%endmacro
+
+%macro PSHUFLW 1+
+    %if mmsize == 8
+        pshufw %1
+    %else
+        pshuflw %1
+    %endif
 %endmacro
 
 %macro DEINTB 5 ; mask, reg1, mask, reg2, optional src to fill masks from
@@ -523,8 +540,22 @@
 %if mmsize == 16
     pshuflw    %1, %2, (%3)*0x55
     punpcklqdq %1, %1
-%else
+%elif cpuflag(mmx2)
     pshufw     %1, %2, (%3)*0x55
+%else
+    %ifnidn %1, %2
+        mova       %1, %2
+    %endif
+    %if %3 & 2
+        punpckhwd  %1, %1
+    %else
+        punpcklwd  %1, %1
+    %endif
+    %if %3 & 1
+        punpckhwd  %1, %1
+    %else
+        punpcklwd  %1, %1
+    %endif
 %endif
 %endmacro
 
@@ -584,4 +615,25 @@
 %macro CLIPD_SSE41 3-4 ;  src/dst, min, max, unused
     pminsd  %1, %3
     pmaxsd  %1, %2
+%endmacro
+
+%macro VBROADCASTSS 2 ; dst xmm/ymm, src m32
+%if cpuflag(avx)
+    vbroadcastss %1, %2
+%else ; sse
+    movss        %1, %2
+    shufps       %1, %1, 0
+%endif
+%endmacro
+
+%macro SHUFFLE_MASK_W 8
+    %rep 8
+        %if %1>=0x80
+            db %1, %1
+        %else
+            db %1*2
+            db %1*2+1
+        %endif
+        %rotate 1
+    %endrep
 %endmacro

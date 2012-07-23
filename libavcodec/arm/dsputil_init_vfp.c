@@ -21,14 +21,10 @@
 #include "libavcodec/dsputil.h"
 #include "dsputil_arm.h"
 
-void ff_vector_fmul_vfp(float *dst, const float *src0,
-                        const float *src1, int len);
 void ff_vector_fmul_reverse_vfp(float *dst, const float *src0,
                                 const float *src1, int len);
 
 void ff_dsputil_init_vfp(DSPContext* c, AVCodecContext *avctx)
 {
-    if (!HAVE_VFPV3)
-        c->vector_fmul = ff_vector_fmul_vfp;
     c->vector_fmul_reverse = ff_vector_fmul_reverse_vfp;
 }

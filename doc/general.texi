@@ -13,12 +13,13 @@
 
 Libav can be hooked up with a number of external libraries to add support
 for more formats. None of them are used by default, their use has to be
-explicitly requested by passing the appropriate flags to @file{./configure}.
+explicitly requested by passing the appropriate flags to
+@command{./configure}.
 
 @section OpenCORE and VisualOn libraries
 
-Spun off Google Android sources, OpenCore and VisualOn libraries provide
-encoders for a number of audio codecs.
+Spun off Google Android sources, OpenCore, VisualOn and Fraunhofer
+libraries provide encoders for a number of audio codecs.
 
 @float NOTE
 OpenCORE and VisualOn libraries are under the Apache License 2.0
@@ -54,6 +55,14 @@ Go to @url{http://sourceforge.net/projects/opencore-amr/} and follow the
 instructions for installing the library.
 Then pass @code{--enable-libvo-amrwbenc} to configure to enable it.
 
+@subsection Fraunhofer AAC library
+
+Libav can make use of the Fraunhofer AAC library for AAC encoding.
+
+Go to @url{http://sourceforge.net/projects/opencore-amr/} and follow the
+instructions for installing the library.
+Then pass @code{--enable-libfdk-aac} to configure to enable it.
+
 @section LAME
 
 Libav can make use of the LAME library for MP3 encoding.
@@ -83,6 +92,17 @@ x264 is under the GNU Public License Version 2 or later
 (see @url{http://www.gnu.org/licenses/old-licenses/gpl-2.0.html} for
 details), you must upgrade Libav's license to GPL in order to use it.
 @end float
+
+@section libilbc
+
+iLBC is a narrowband speech codec that has been made freely available
+by Google as part of the WebRTC project. libilbc is a packaging friendly
+copy of the iLBC codec. Libav can make use of the libilbc library for
+iLBC encoding and decoding.
+
+Go to @url{https://github.com/dekkers/libilbc} and follow the instructions for
+installing the library. Then pass @code{--enable-libilbc} to configure to
+enable it.
 
 
 
@@ -172,6 +192,7 @@ library:
 @item IEC61937 encapsulation @tab X @tab X
 @item IFF                       @tab   @tab X
     @tab Interchange File Format
+@item iLBC                      @tab X @tab X
 @item Interplay MVE             @tab   @tab X
     @tab Format used in various Interplay computer games.
 @item IV8                       @tab   @tab X
@@ -351,7 +372,7 @@ following image formats are supported:
     @tab Digital Picture Exchange
 @item JPEG         @tab X @tab X
     @tab Progressive JPEG is not supported.
-@item JPEG 2000    @tab   @tab E
+@item JPEG 2000    @tab E @tab E
     @tab decoding supported through external library libopenjpeg
 @item JPEG-LS      @tab X @tab X
 @item LJPEG        @tab X @tab
@@ -454,7 +475,7 @@ following image formats are supported:
 @item DFA                    @tab     @tab  X
     @tab Codec used in Chronomaster game.
 @item Dirac                  @tab  E  @tab  E
-    @tab supported through external libdirac/libschroedinger libraries
+    @tab supported through external library libschroedinger
 @item Deluxe Paint Animation @tab     @tab  X
 @item DNxHD                  @tab   X @tab  X
     @tab aka SMPTE VC3
@@ -518,7 +539,13 @@ following image formats are supported:
 @item LCL (LossLess Codec Library) ZLIB  @tab  E  @tab  E
 @item LOCO                   @tab     @tab  X
 @item lossless MJPEG         @tab  X  @tab  X
+@item Microsoft ATC Screen   @tab     @tab  X
+    @tab Also known as Microsoft Screen 3.
+@item Microsoft Expression Encoder Screen  @tab     @tab  X
+    @tab Also known as Microsoft Titanium Screen 2.
 @item Microsoft RLE          @tab     @tab  X
+@item Microsoft Screen 1     @tab     @tab  X
+    @tab Also known as Windows Media Video V7 Screen.
 @item Microsoft Video 1      @tab     @tab  X
 @item Mimic                  @tab     @tab  X
     @tab Used in MSN Messenger Webcam streams.
@@ -586,6 +613,8 @@ following image formats are supported:
     @tab fourcc: SP5X
 @item TechSmith Screen Capture Codec  @tab     @tab  X
     @tab fourcc: TSCC
+@item TechSmith Screen Capture Codec 2  @tab     @tab  X
+    @tab fourcc: TSC2
 @item Theora                 @tab  E  @tab  X
     @tab encoding supported through external library libtheora
 @item Tiertex Limited SEQ video  @tab     @tab  X
@@ -701,10 +730,14 @@ following image formats are supported:
 @item DV audio               @tab     @tab  X
 @item Enhanced AC-3          @tab  X  @tab  X
 @item FLAC (Free Lossless Audio Codec)  @tab  X  @tab  IX
+@item G.723.1                @tab     @tab  X
 @item GSM                    @tab  E  @tab  X
     @tab encoding supported through external library libgsm
 @item GSM Microsoft variant  @tab  E  @tab  X
     @tab encoding supported through external library libgsm
+@item IAC (Indeo Audio Coder)  @tab     @tab  X
+@item iLBC (Internet Low Bitrate Codec) @tab  E  @tab  E
+    @tab encoding and decoding supported through external library libilbc
 @item IMC (Intel Music Coder)  @tab     @tab  X
 @item MACE (Macintosh Audio Compression/Expansion) 3:1  @tab     @tab  X
 @item MACE (Macintosh Audio Compression/Expansion) 6:1  @tab     @tab  X
@@ -802,18 +835,30 @@ performance on systems without hardware floating point support).
 
 @multitable @columnfractions .4 .1
 @item Name         @tab Support
-@item Apple HTTP Live Streaming @tab X
 @item file         @tab X
 @item Gopher       @tab X
+@item HLS          @tab X
 @item HTTP         @tab X
-@item MMS          @tab X
+@item HTTPS        @tab X
+@item MMSH         @tab X
+@item MMST         @tab X
 @item pipe         @tab X
+@item RTMP         @tab X
+@item RTMPE        @tab E
+@item RTMPS        @tab X
+@item RTMPT        @tab X
+@item RTMPTE       @tab E
+@item RTMPTS       @tab X
 @item RTP          @tab X
+@item SCTP         @tab X
 @item TCP          @tab X
+@item TLS          @tab X
 @item UDP          @tab X
 @end multitable
 
 @code{X} means that the protocol is supported.
+
+@code{E} means that support is provided through an external library.
 
 
 @section Input/Output Devices

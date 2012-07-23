@@ -311,13 +311,7 @@ av_cold int ff_dvvideo_init(AVCodecContext *avctx)
     /* 248DCT setup */
     s->fdct[1]     = dsp.fdct248;
     s->idct_put[1] = ff_simple_idct248_put;  // FIXME: need to add it to DSP
-    if (avctx->lowres){
-        for (i = 0; i < 64; i++){
-            int j = ff_zigzag248_direct[i];
-            s->dv_zigzag[1][i] = dsp.idct_permutation[(j & 7) + (j & 8) * 4 + (j & 48) / 2];
-        }
-    }else
-        memcpy(s->dv_zigzag[1], ff_zigzag248_direct, 64);
+    memcpy(s->dv_zigzag[1], ff_zigzag248_direct, 64);
 
     avctx->coded_frame = &s->picture;
     s->avctx = avctx;
@@ -668,7 +662,7 @@ static int dv_encode_video_segment(AVCodecContext *avctx, void *arg)
     int mb_x, mb_y, c_offset, linesize, y_stride;
     uint8_t*  y_ptr;
     uint8_t*  dif;
-    LOCAL_ALIGNED_8(uint8_t, scratch, [64]);
+    LOCAL_ALIGNED_8(uint8_t, scratch, [128]);
     EncBlockInfo  enc_blks[5*DV_MAX_BPM];
     PutBitContext pbs[5*DV_MAX_BPM];
     PutBitContext* pb;
@@ -723,10 +717,10 @@ static int dv_encode_video_segment(AVCodecContext *avctx, void *arg)
                     b[0] = c_ptr[0]; b[1] = c_ptr[1]; b[2] = c_ptr[2]; b[3] = c_ptr[3];
                     b[4] =     d[0]; b[5] =     d[1]; b[6] =     d[2]; b[7] =     d[3];
                     c_ptr += linesize;
-                    b += 8;
+                    b += 16;
                 }
                 c_ptr = scratch;
-                linesize = 8;
+                linesize = 16;
             }
 
             vs_bit_size += dv_init_enc_block(    enc_blk++, c_ptr           , linesize, s, 1);

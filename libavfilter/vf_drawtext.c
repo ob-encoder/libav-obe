@@ -41,6 +41,9 @@
 #include "libavutil/lfg.h"
 #include "avfilter.h"
 #include "drawutils.h"
+#include "formats.h"
+#include "internal.h"
+#include "video.h"
 
 #undef time
 
@@ -277,7 +280,7 @@ error:
     return ret;
 }
 
-static av_cold int init(AVFilterContext *ctx, const char *args, void *opaque)
+static av_cold int init(AVFilterContext *ctx, const char *args)
 {
     int err;
     DrawTextContext *dtext = ctx->priv;
@@ -395,7 +398,7 @@ static int query_formats(AVFilterContext *ctx)
         PIX_FMT_NONE
     };
 
-    avfilter_set_common_formats(ctx, avfilter_make_format_list(pix_fmts));
+    ff_set_common_formats(ctx, ff_make_format_list(pix_fmts));
     return 0;
 }
 
@@ -788,7 +791,10 @@ static int draw_text(AVFilterContext *ctx, AVFilterBufferRef *picref,
     return 0;
 }
 
-static void null_draw_slice(AVFilterLink *link, int y, int h, int slice_dir) { }
+static int null_draw_slice(AVFilterLink *link, int y, int h, int slice_dir)
+{
+    return 0;
+}
 
 static inline int normalize_double(int *n, double d)
 {
@@ -805,15 +811,16 @@ static inline int normalize_double(int *n, double d)
     return ret;
 }
 
-static void start_frame(AVFilterLink *inlink, AVFilterBufferRef *inpicref)
+static int start_frame(AVFilterLink *inlink, AVFilterBufferRef *inpicref)
 {
     AVFilterContext *ctx = inlink->dst;
     DrawTextContext *dtext = ctx->priv;
-    int fail = 0;
+    AVFilterBufferRef *buf_out;
+    int ret = 0;
 
-    if (dtext_prepare_text(ctx) < 0) {
+    if ((ret = dtext_prepare_text(ctx)) < 0) {
         av_log(ctx, AV_LOG_ERROR, "Can't draw text\n");
-        fail = 1;
+        return ret;
     }
 
     dtext->var_values[VAR_T] = inpicref->pts == AV_NOPTS_VALUE ?
@@ -825,8 +832,7 @@ static void start_frame(AVFilterLink *inlink, AVFilterBufferRef *inpicref)
     dtext->var_values[VAR_X] =
         av_expr_eval(dtext->x_pexpr, dtext->var_values, &dtext->prng);
 
-    dtext->draw = fail ? 0 :
-        av_expr_eval(dtext->d_pexpr, dtext->var_values, &dtext->prng);
+    dtext->draw = av_expr_eval(dtext->d_pexpr, dtext->var_values, &dtext->prng);
 
     normalize_double(&dtext->x, dtext->var_values[VAR_X]);
     normalize_double(&dtext->y, dtext->var_values[VAR_Y]);
@@ -847,22 +853,29 @@ static void start_frame(AVFilterLink *inlink, AVFilterBufferRef *inpicref)
             (int)dtext->var_values[VAR_N], dtext->var_values[VAR_T],
             dtext->x, dtext->y, dtext->x+dtext->w, dtext->y+dtext->h);
 
-    avfilter_start_frame(inlink->dst->outputs[0], inpicref);
+    buf_out = avfilter_ref_buffer(inpicref, ~0);
+    if (!buf_out)
+        return AVERROR(ENOMEM);
+
+    return ff_start_frame(inlink->dst->outputs[0], buf_out);
 }
 
-static void end_frame(AVFilterLink *inlink)
+static int end_frame(AVFilterLink *inlink)
 {
     AVFilterLink *outlink = inlink->dst->outputs[0];
     AVFilterBufferRef *picref = inlink->cur_buf;
     DrawTextContext *dtext = inlink->dst->priv;
+    int ret;
 
     if (dtext->draw)
         draw_text(inlink->dst, picref, picref->video->w, picref->video->h);
 
     dtext->var_values[VAR_N] += 1.0;
 
-    avfilter_draw_slice(outlink, 0, picref->video->h, 1);
-    avfilter_end_frame(outlink);
+    if ((ret = ff_draw_slice(outlink, 0, picref->video->h, 1)) < 0 ||
+        (ret = ff_end_frame(outlink)) < 0)
+        return ret;
+    return 0;
 }
 
 AVFilter avfilter_vf_drawtext = {
@@ -873,18 +886,18 @@ AVFilter avfilter_vf_drawtext = {
     .uninit        = uninit,
     .query_formats = query_formats,
 
-    .inputs    = (AVFilterPad[]) {{ .name             = "default",
-                                    .type             = AVMEDIA_TYPE_VIDEO,
-                                    .get_video_buffer = avfilter_null_get_video_buffer,
-                                    .start_frame      = start_frame,
-                                    .draw_slice       = null_draw_slice,
-                                    .end_frame        = end_frame,
-                                    .config_props     = config_input,
-                                    .min_perms        = AV_PERM_WRITE |
-                                                        AV_PERM_READ,
-                                    .rej_perms        = AV_PERM_PRESERVE },
-                                  { .name = NULL}},
-    .outputs   = (AVFilterPad[]) {{ .name             = "default",
-                                    .type             = AVMEDIA_TYPE_VIDEO, },
-                                  { .name = NULL}},
+    .inputs    = (const AVFilterPad[]) {{ .name             = "default",
+                                          .type             = AVMEDIA_TYPE_VIDEO,
+                                          .get_video_buffer = ff_null_get_video_buffer,
+                                          .start_frame      = start_frame,
+                                          .draw_slice       = null_draw_slice,
+                                          .end_frame        = end_frame,
+                                          .config_props     = config_input,
+                                          .min_perms        = AV_PERM_WRITE |
+                                                              AV_PERM_READ,
+                                          .rej_perms        = AV_PERM_PRESERVE },
+                                        { .name = NULL}},
+    .outputs   = (const AVFilterPad[]) {{ .name             = "default",
+                                          .type             = AVMEDIA_TYPE_VIDEO, },
+                                        { .name = NULL}},
 };

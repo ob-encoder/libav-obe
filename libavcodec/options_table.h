@@ -20,6 +20,12 @@
 #ifndef AVCODEC_OPTIONS_TABLE
 #define AVCODEC_OPTIONS_TABLE
 
+#include <float.h>
+#include <limits.h>
+
+#include "libavutil/opt.h"
+#include "avcodec.h"
+
 #define OFFSET(x) offsetof(AVCodecContext,x)
 #define DEFAULT 0 //should be NAN but it does not work as it is not a constant in glibc as required by ANSI/ISO C
 //these names are too long to be readable
@@ -153,7 +159,6 @@ static const AVOption options[]={
 {"block_align", NULL, OFFSET(block_align), AV_OPT_TYPE_INT, {.dbl = DEFAULT }, INT_MIN, INT_MAX},
 {"mpeg_quant", "use MPEG quantizers instead of H.263", OFFSET(mpeg_quant), AV_OPT_TYPE_INT, {.dbl = DEFAULT }, INT_MIN, INT_MAX, V|E},
 {"stats_out", NULL, OFFSET(stats_out), AV_OPT_TYPE_STRING, {.str = NULL}, CHAR_MIN, CHAR_MAX},
-{"stats_in", NULL, OFFSET(stats_in), AV_OPT_TYPE_STRING, {.str = NULL}, CHAR_MIN, CHAR_MAX},
 {"qsquish", "how to keep quantizer between qmin and qmax (0 = clip, 1 = use differentiable function)", OFFSET(rc_qsquish), AV_OPT_TYPE_FLOAT, {.dbl = DEFAULT }, 0, 99, V|E},
 {"rc_qmod_amp", "experimental quantizer modulation", OFFSET(rc_qmod_amp), AV_OPT_TYPE_FLOAT, {.dbl = DEFAULT }, -FLT_MAX, FLT_MAX, V|E},
 {"rc_qmod_freq", "experimental quantizer modulation", OFFSET(rc_qmod_freq), AV_OPT_TYPE_INT, {.dbl = DEFAULT }, INT_MIN, INT_MAX, V|E},
@@ -311,6 +316,10 @@ static const AVOption options[]={
 {"aac_low", NULL, 0, AV_OPT_TYPE_CONST, {.dbl = FF_PROFILE_AAC_LOW }, INT_MIN, INT_MAX, A|E, "profile"},
 {"aac_ssr", NULL, 0, AV_OPT_TYPE_CONST, {.dbl = FF_PROFILE_AAC_SSR }, INT_MIN, INT_MAX, A|E, "profile"},
 {"aac_ltp", NULL, 0, AV_OPT_TYPE_CONST, {.dbl = FF_PROFILE_AAC_LTP }, INT_MIN, INT_MAX, A|E, "profile"},
+{"aac_he", NULL, 0, AV_OPT_TYPE_CONST, {.dbl = FF_PROFILE_AAC_HE }, INT_MIN, INT_MAX, A|E, "profile"},
+{"aac_he_v2", NULL, 0, AV_OPT_TYPE_CONST, {.dbl = FF_PROFILE_AAC_HE_V2 }, INT_MIN, INT_MAX, A|E, "profile"},
+{"aac_ld", NULL, 0, AV_OPT_TYPE_CONST, {.dbl = FF_PROFILE_AAC_LD }, INT_MIN, INT_MAX, A|E, "profile"},
+{"aac_eld", NULL, 0, AV_OPT_TYPE_CONST, {.dbl = FF_PROFILE_AAC_ELD }, INT_MIN, INT_MAX, A|E, "profile"},
 {"dts", NULL, 0, AV_OPT_TYPE_CONST, {.dbl = FF_PROFILE_DTS }, INT_MIN, INT_MAX, A|E, "profile"},
 {"dts_es", NULL, 0, AV_OPT_TYPE_CONST, {.dbl = FF_PROFILE_DTS_ES }, INT_MIN, INT_MAX, A|E, "profile"},
 {"dts_96_24", NULL, 0, AV_OPT_TYPE_CONST, {.dbl = FF_PROFILE_DTS_96_24 }, INT_MIN, INT_MAX, A|E, "profile"},
@@ -318,7 +327,6 @@ static const AVOption options[]={
 {"dts_hd_ma", NULL, 0, AV_OPT_TYPE_CONST, {.dbl = FF_PROFILE_DTS_HD_MA }, INT_MIN, INT_MAX, A|E, "profile"},
 {"level", NULL, OFFSET(level), AV_OPT_TYPE_INT, {.dbl = FF_LEVEL_UNKNOWN }, INT_MIN, INT_MAX, V|A|E, "level"},
 {"unknown", NULL, 0, AV_OPT_TYPE_CONST, {.dbl = FF_LEVEL_UNKNOWN }, INT_MIN, INT_MAX, V|A|E, "level"},
-{"lowres", "decode at 1= 1/2, 2=1/4, 3=1/8 resolutions", OFFSET(lowres), AV_OPT_TYPE_INT, {.dbl = 0 }, 0, INT_MAX, V|A|D},
 {"skip_threshold", "frame skip threshold", OFFSET(frame_skip_threshold), AV_OPT_TYPE_INT, {.dbl = DEFAULT }, INT_MIN, INT_MAX, V|E},
 {"skip_factor", "frame skip factor", OFFSET(frame_skip_factor), AV_OPT_TYPE_INT, {.dbl = DEFAULT }, INT_MIN, INT_MAX, V|E},
 {"skip_exp", "frame skip exponent", OFFSET(frame_skip_exp), AV_OPT_TYPE_INT, {.dbl = DEFAULT }, INT_MIN, INT_MAX, V|E},
@@ -387,6 +395,11 @@ static const AVOption options[]={
 {"s32", "32-bit signed integer",  0, AV_OPT_TYPE_CONST, {.dbl = AV_SAMPLE_FMT_S32 }, INT_MIN, INT_MAX, A|D, "request_sample_fmt"},
 {"flt", "32-bit float",           0, AV_OPT_TYPE_CONST, {.dbl = AV_SAMPLE_FMT_FLT }, INT_MIN, INT_MAX, A|D, "request_sample_fmt"},
 {"dbl", "64-bit double",          0, AV_OPT_TYPE_CONST, {.dbl = AV_SAMPLE_FMT_DBL }, INT_MIN, INT_MAX, A|D, "request_sample_fmt"},
+{"u8p" , "8-bit unsigned integer planar", 0, AV_OPT_TYPE_CONST, {.dbl = AV_SAMPLE_FMT_U8P  }, INT_MIN, INT_MAX, A|D, "request_sample_fmt"},
+{"s16p", "16-bit signed integer planar",  0, AV_OPT_TYPE_CONST, {.dbl = AV_SAMPLE_FMT_S16P }, INT_MIN, INT_MAX, A|D, "request_sample_fmt"},
+{"s32p", "32-bit signed integer planar",  0, AV_OPT_TYPE_CONST, {.dbl = AV_SAMPLE_FMT_S32P }, INT_MIN, INT_MAX, A|D, "request_sample_fmt"},
+{"fltp", "32-bit float planar",           0, AV_OPT_TYPE_CONST, {.dbl = AV_SAMPLE_FMT_FLTP }, INT_MIN, INT_MAX, A|D, "request_sample_fmt"},
+{"dblp", "64-bit double planar",          0, AV_OPT_TYPE_CONST, {.dbl = AV_SAMPLE_FMT_DBLP }, INT_MIN, INT_MAX, A|D, "request_sample_fmt"},
 {NULL},
 };
 
