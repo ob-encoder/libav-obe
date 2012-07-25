@@ -229,6 +229,10 @@ playpath. If a live stream of that name is not found, it plays the
 recorded stream. The other possible values are @code{live} and
 @code{recorded}.
 
+@item rtmp_pageurl
+URL of the web page in which the media was embedded. By default no
+value will be sent.
+
 @item rtmp_playpath
 Stream identifier to play or to publish. This option overrides the
 parameter specified in the URI.
@@ -237,7 +241,7 @@ parameter specified in the URI.
 URL of the SWF player for the media. By default no value will be sent.
 
 @item rtmp_tcurl
-URL of the target stream.
+URL of the target stream. Defaults to proto://host[:port]/app.
 
 @end table
 
@@ -246,6 +250,15 @@ For example to read with @command{avplay} a multimedia resource named
 @example
 avplay rtmp://myserver/vod/sample
 @end example
+
+@section rtmpe
+
+Encrypted Real-Time Messaging Protocol.
+
+The Encrypted Real-Time Messaging Protocol (RTMPE) is used for
+streaming multimedia content within standard cryptographic primitives,
+consisting of Diffie-Hellman key exchange and HMACSHA256, generating
+a pair of RC4 keys.
 
 @section rtmps
 
@@ -260,6 +273,14 @@ Real-Time Messaging Protocol tunneled through HTTP.
 
 The Real-Time Messaging Protocol tunneled through HTTP (RTMPT) is used
 for streaming multimedia content within HTTP requests to traverse
+firewalls.
+
+@section rtmpte
+
+Encrypted Real-Time Messaging Protocol tunneled through HTTP.
+
+The Encrypted Real-Time Messaging Protocol tunneled through HTTP (RTMPTE)
+is used for streaming multimedia content within HTTP requests to traverse
 firewalls.
 
 @section rtmpts
