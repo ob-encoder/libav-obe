@@ -190,7 +190,7 @@ static int initFilter(int16_t **outFilter, int32_t **filterPos,
                       int *outFilterSize, int xInc, int srcW, int dstW,
                       int filterAlign, int one, int flags, int cpu_flags,
                       SwsVector *srcFilter, SwsVector *dstFilter,
-                      double param[2], int is_horizontal)
+                      double param[2], int is_horizontal, int *needs_scale)
 {
     int i;
     int filterSize;
@@ -206,6 +206,7 @@ static int initFilter(int16_t **outFilter, int32_t **filterPos,
     // NOTE: the +3 is for the MMX(+1) / SSE(+3) scaler which reads over the end
     FF_ALLOC_OR_GOTO(NULL, *filterPos, (dstW + 3) * sizeof(**filterPos), fail);
 
+    *needs_scale = 1;
     if (FFABS(xInc - 0x10000) < 10) { // unscaled
         int i;
         filterSize = 1;
@@ -216,6 +217,7 @@ static int initFilter(int16_t **outFilter, int32_t **filterPos,
             filter[i * filterSize] = fone;
             (*filterPos)[i]        = i;
         }
+        *needs_scale = 0;
     } else if (flags & SWS_POINT) { // lame looking point sampling mode
         int i;
         int xDstInSrc;
@@ -1060,14 +1062,14 @@ av_cold int sws_init_context(SwsContext *c, SwsFilter *srcFilter,
                            srcW, dstW, filterAlign, 1 << 14,
                            (flags & SWS_BICUBLIN) ? (flags | SWS_BICUBIC) : flags,
                            cpu_flags, srcFilter->lumH, dstFilter->lumH,
-                           c->param, 1) < 0)
+                           c->param, 1, &c->needs_hyscale) < 0)
                 goto fail;
             if (initFilter(&c->hChrFilter, &c->hChrFilterPos,
                            &c->hChrFilterSize, c->chrXInc,
                            c->chrSrcW, c->chrDstW, filterAlign, 1 << 14,
                            (flags & SWS_BICUBLIN) ? (flags | SWS_BILINEAR) : flags,
                            cpu_flags, srcFilter->chrH, dstFilter->chrH,
-                           c->param, 1) < 0)
+                           c->param, 1, &c->needs_hcscale) < 0)
                 goto fail;
         }
     } // initialize horizontal stuff
@@ -1083,14 +1085,14 @@ av_cold int sws_init_context(SwsContext *c, SwsFilter *srcFilter,
                        c->lumYInc, srcH, dstH, filterAlign, (1 << 12),
                        (flags & SWS_BICUBLIN) ? (flags | SWS_BICUBIC) : flags,
                        cpu_flags, srcFilter->lumV, dstFilter->lumV,
-                       c->param, 0) < 0)
+                       c->param, 0, &c->needs_vyscale) < 0)
             goto fail;
         if (initFilter(&c->vChrFilter, &c->vChrFilterPos, &c->vChrFilterSize,
                        c->chrYInc, c->chrSrcH, c->chrDstH,
                        filterAlign, (1 << 12),
                        (flags & SWS_BICUBLIN) ? (flags | SWS_BILINEAR) : flags,
                        cpu_flags, srcFilter->chrV, dstFilter->chrV,
-                       c->param, 0) < 0)
+                       c->param, 0, &c->needs_vcscale) < 0)
             goto fail;
 
 #if HAVE_ALTIVEC

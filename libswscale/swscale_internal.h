@@ -519,7 +519,10 @@ typedef struct SwsContext {
     /// Color range conversion function for chroma planes if needed.
     void (*chrConvertRange)(int16_t *dst1, int16_t *dst2, int width);
 
+    int needs_hyscale; ///< Set if there are luma planes to be converted.
     int needs_hcscale; ///< Set if there are chroma planes to be converted.
+    int needs_vyscale; ///< Set if there are luma planes to be converted.
+    int needs_vcscale; ///< Set if there are chroma planes to be converted.
 } SwsContext;
 //FIXME check init (where 0)
 
