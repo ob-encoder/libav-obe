@@ -92,7 +92,6 @@ typedef struct {
 
     float sqrt_tab[30];
     GetBitContext gb;
-    float one_div_log2;
 
     DSPContext dsp;
     FFTContext fft;
@@ -176,8 +175,8 @@ static av_cold int imc_decode_init(AVCodecContext *avctx)
     IMCContext *q = avctx->priv_data;
     double r1, r2;
 
-    if ((avctx->codec_id == CODEC_ID_IMC && avctx->channels != 1)
-        || (avctx->codec_id == CODEC_ID_IAC && avctx->channels > 2)) {
+    if ((avctx->codec_id == AV_CODEC_ID_IMC && avctx->channels != 1)
+        || (avctx->codec_id == AV_CODEC_ID_IAC && avctx->channels > 2)) {
         av_log_ask_for_sample(avctx, "Number of channels is not supported\n");
         return AVERROR_PATCHWELCOME;
     }
@@ -227,12 +226,8 @@ static av_cold int imc_decode_init(AVCodecContext *avctx)
                      imc_huffman_bits[i][j], 2, 2, INIT_VLC_USE_NEW_STATIC);
         }
     }
-    q->one_div_log2 = 1 / log(2);
 
-    if (avctx->codec_id == CODEC_ID_IAC) {
-    }
-
-    if (avctx->codec_id == CODEC_ID_IAC) {
+    if (avctx->codec_id == AV_CODEC_ID_IAC) {
         iac_generate_tabs(q, avctx->sample_rate);
     } else {
         memcpy(q->cyclTab,  cyclTab,  sizeof(cyclTab));
@@ -792,7 +787,7 @@ static int imc_decode_block(AVCodecContext *avctx, IMCContext *q, int ch)
         chctx->decoder_reset = 1;
 
     if (chctx->decoder_reset) {
-        memset(q->out_samples, 0, sizeof(q->out_samples));
+        memset(q->out_samples, 0, COEFFS * sizeof(*q->out_samples));
         for (i = 0; i < BANDS; i++)
             chctx->old_floor[i] = 1.0;
         for (i = 0; i < COEFFS; i++)
@@ -846,7 +841,7 @@ static int imc_decode_block(AVCodecContext *avctx, IMCContext *q, int ch)
             }
         }
     }
-    if (avctx->codec_id == CODEC_ID_IAC) {
+    if (avctx->codec_id == AV_CODEC_ID_IAC) {
         bitscount += !!chctx->bandWidthT[BANDS - 1];
         if (!(stream_format_code & 0x2))
             bitscount += 16;
@@ -995,7 +990,7 @@ static av_cold int imc_decode_close(AVCodecContext * avctx)
 AVCodec ff_imc_decoder = {
     .name           = "imc",
     .type           = AVMEDIA_TYPE_AUDIO,
-    .id             = CODEC_ID_IMC,
+    .id             = AV_CODEC_ID_IMC,
     .priv_data_size = sizeof(IMCContext),
     .init           = imc_decode_init,
     .close          = imc_decode_close,
@@ -1007,7 +1002,7 @@ AVCodec ff_imc_decoder = {
 AVCodec ff_iac_decoder = {
     .name           = "iac",
     .type           = AVMEDIA_TYPE_AUDIO,
-    .id             = CODEC_ID_IAC,
+    .id             = AV_CODEC_ID_IAC,
     .priv_data_size = sizeof(IMCContext),
     .init           = imc_decode_init,
     .close          = imc_decode_close,

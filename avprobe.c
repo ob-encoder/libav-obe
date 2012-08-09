@@ -44,7 +44,7 @@ static int use_byte_value_binary_prefix = 0;
 static int use_value_sexagesimal_format = 0;
 
 /* globals */
-static const OptionDef options[];
+static const OptionDef *options;
 
 /* AVprobe context */
 static const char *input_filename;
@@ -651,9 +651,6 @@ static void show_stream(AVFormatContext *fmt_ctx, int stream_idx)
 
     if (fmt_ctx->iformat->flags & AVFMT_SHOW_IDS)
         probe_int("id", stream->id);
-    probe_str("r_frame_rate",
-              rational_string(val_str, sizeof(val_str), "/",
-              &stream->r_frame_rate));
     probe_str("avg_frame_rate",
               rational_string(val_str, sizeof(val_str), "/",
               &stream->avg_frame_rate));
@@ -733,7 +730,7 @@ static int open_input_file(AVFormatContext **fmt_ctx_ptr, const char *filename)
         AVStream *stream = fmt_ctx->streams[i];
         AVCodec *codec;
 
-        if (stream->codec->codec_id == CODEC_ID_PROBE) {
+        if (stream->codec->codec_id == AV_CODEC_ID_PROBE) {
             fprintf(stderr, "Failed to probe codec for input stream %d\n",
                     stream->index);
         } else if (!(codec = avcodec_find_decoder(stream->codec->codec_id))) {
@@ -887,7 +884,7 @@ static void opt_pretty(void)
     use_value_sexagesimal_format = 1;
 }
 
-static const OptionDef options[] = {
+static const OptionDef real_options[] = {
 #include "cmdutils_common_opts.h"
     { "f", HAS_ARG, {(void*)opt_format}, "force format", "format" },
     { "of", HAS_ARG, {(void*)&opt_output_format}, "output the document either as ini or json", "output_format" },
@@ -927,6 +924,7 @@ int main(int argc, char **argv)
     if (!buffer)
         exit(1);
 
+    options = real_options;
     parse_loglevel(argc, argv, options);
     av_register_all();
     avformat_network_init();

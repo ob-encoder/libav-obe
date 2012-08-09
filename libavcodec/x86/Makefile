@@ -19,7 +19,6 @@ MMX-OBJS-$(CONFIG_DNXHD_ENCODER)       += x86/dnxhd_mmx.o
 MMX-OBJS-$(CONFIG_DWT)                 += x86/snowdsp_mmx.o
 MMX-OBJS-$(CONFIG_ENCODERS)            += x86/dsputilenc_mmx.o
 MMX-OBJS-$(CONFIG_FFT)                 += x86/fft.o
-MMX-OBJS-$(CONFIG_GPL)                 += x86/idct_mmx.o
 MMX-OBJS-$(CONFIG_H264DSP)             += x86/h264dsp_mmx.o
 MMX-OBJS-$(CONFIG_H264PRED)            += x86/h264_intrapred_init.o
 MMX-OBJS-$(CONFIG_LPC)                 += x86/lpc_mmx.o
@@ -39,8 +38,6 @@ YASM-OBJS-$(CONFIG_AAC_DECODER)        += x86/sbrdsp.o
 YASM-OBJS-$(CONFIG_AC3DSP)             += x86/ac3dsp.o
 YASM-OBJS-$(CONFIG_DCT)                += x86/dct32_sse.o
 YASM-OBJS-$(CONFIG_ENCODERS)           += x86/dsputilenc_yasm.o
-YASM-OBJS-FFT-$(HAVE_AMD3DNOW)         += x86/fft_3dn.o
-YASM-OBJS-FFT-$(HAVE_AMD3DNOWEXT)      += x86/fft_3dn2.o
 YASM-OBJS-$(CONFIG_FFT)                += x86/fft_mmx.o                 \
                                           $(YASM-OBJS-FFT-yes)
 YASM-OBJS-$(CONFIG_H264CHROMA)         += x86/h264_chromamc.o           \

@@ -23,7 +23,7 @@
  */
 
 #include "libavutil/cpu.h"
-#include "libavutil/x86_cpu.h"
+#include "libavutil/x86/asm.h"
 #include "libavcodec/dsputil.h"
 #include "libavcodec/h264dsp.h"
 #include "libavcodec/mpegvideo.h"
@@ -2117,10 +2117,10 @@ void ff_ ## OP ## _h264_chroma_mc ## NUM ## _ ## DEPTH ## _ ## OPT      \
                                       (uint8_t *dst, uint8_t *src,      \
                                        int stride, int h, int x, int y);
 
-CHROMA_MC(put, 2, 10, mmxext)
-CHROMA_MC(avg, 2, 10, mmxext)
-CHROMA_MC(put, 4, 10, mmxext)
-CHROMA_MC(avg, 4, 10, mmxext)
+CHROMA_MC(put, 2, 10, mmx2)
+CHROMA_MC(avg, 2, 10, mmx2)
+CHROMA_MC(put, 4, 10, mmx2)
+CHROMA_MC(avg, 4, 10, mmx2)
 CHROMA_MC(put, 8, 10, sse2)
 CHROMA_MC(avg, 8, 10, sse2)
 CHROMA_MC(put, 8, 10, avx)
@@ -2164,35 +2164,6 @@ void ff_avg_vc1_mspel_mc00_mmx2(uint8_t *dst, const uint8_t *src,
 
 /* XXX: Those functions should be suppressed ASAP when all IDCTs are
  * converted. */
-#if CONFIG_GPL
-static void ff_libmpeg2mmx_idct_put(uint8_t *dest, int line_size,
-                                    DCTELEM *block)
-{
-    ff_mmx_idct(block);
-    ff_put_pixels_clamped_mmx(block, dest, line_size);
-}
-
-static void ff_libmpeg2mmx_idct_add(uint8_t *dest, int line_size,
-                                    DCTELEM *block)
-{
-    ff_mmx_idct(block);
-    ff_add_pixels_clamped_mmx(block, dest, line_size);
-}
-
-static void ff_libmpeg2mmx2_idct_put(uint8_t *dest, int line_size,
-                                     DCTELEM *block)
-{
-    ff_mmxext_idct(block);
-    ff_put_pixels_clamped_mmx(block, dest, line_size);
-}
-
-static void ff_libmpeg2mmx2_idct_add(uint8_t *dest, int line_size,
-                                     DCTELEM *block)
-{
-    ff_mmxext_idct(block);
-    ff_add_pixels_clamped_mmx(block, dest, line_size);
-}
-#endif
 
 static void ff_idct_xvid_mmx_put(uint8_t *dest, int line_size, DCTELEM *block)
 {
@@ -2387,9 +2358,9 @@ static void ac3_downmix_sse(float (*samples)[256], float (*matrix)[2],
 }
 
 #if HAVE_6REGS
-static void vector_fmul_window_3dnow2(float *dst, const float *src0,
-                                      const float *src1, const float *win,
-                                      int len)
+static void vector_fmul_window_3dnowext(float *dst, const float *src0,
+                                        const float *src1, const float *win,
+                                        int len)
 {
     x86_reg i = -len * 4;
     x86_reg j =  len * 4 - 8;
@@ -2685,8 +2656,8 @@ static void dsputil_init_mmx2(DSPContext *c, AVCodecContext *avctx,
         }
     }
 
-    if (CONFIG_VP3_DECODER && (avctx->codec_id == CODEC_ID_VP3 ||
-                               avctx->codec_id == CODEC_ID_THEORA)) {
+    if (CONFIG_VP3_DECODER && (avctx->codec_id == AV_CODEC_ID_VP3 ||
+                               avctx->codec_id == AV_CODEC_ID_THEORA)) {
         c->put_no_rnd_pixels_tab[1][1] = put_no_rnd_pixels8_x2_exact_mmx2;
         c->put_no_rnd_pixels_tab[1][2] = put_no_rnd_pixels8_y2_exact_mmx2;
     }
@@ -2740,10 +2711,10 @@ static void dsputil_init_mmx2(DSPContext *c, AVCodecContext *avctx,
         c->put_h264_chroma_pixels_tab[2] = ff_put_h264_chroma_mc2_mmx2;
     }
     if (bit_depth == 10 && CONFIG_H264CHROMA) {
-        c->put_h264_chroma_pixels_tab[2] = ff_put_h264_chroma_mc2_10_mmxext;
-        c->avg_h264_chroma_pixels_tab[2] = ff_avg_h264_chroma_mc2_10_mmxext;
-        c->put_h264_chroma_pixels_tab[1] = ff_put_h264_chroma_mc4_10_mmxext;
-        c->avg_h264_chroma_pixels_tab[1] = ff_avg_h264_chroma_mc4_10_mmxext;
+        c->put_h264_chroma_pixels_tab[2] = ff_put_h264_chroma_mc2_10_mmx2;
+        c->avg_h264_chroma_pixels_tab[2] = ff_avg_h264_chroma_mc2_10_mmx2;
+        c->put_h264_chroma_pixels_tab[1] = ff_put_h264_chroma_mc4_10_mmx2;
+        c->avg_h264_chroma_pixels_tab[1] = ff_avg_h264_chroma_mc4_10_mmx2;
     }
 
     c->add_hfyu_median_prediction   = ff_add_hfyu_median_prediction_mmx2;
@@ -2793,8 +2764,8 @@ static void dsputil_init_3dnow(DSPContext *c, AVCodecContext *avctx,
         }
     }
 
-    if (CONFIG_VP3_DECODER && (avctx->codec_id == CODEC_ID_VP3 ||
-                               avctx->codec_id == CODEC_ID_THEORA)) {
+    if (CONFIG_VP3_DECODER && (avctx->codec_id == AV_CODEC_ID_VP3 ||
+                               avctx->codec_id == AV_CODEC_ID_THEORA)) {
         c->put_no_rnd_pixels_tab[1][1] = put_no_rnd_pixels8_x2_exact_3dnow;
         c->put_no_rnd_pixels_tab[1][2] = put_no_rnd_pixels8_y2_exact_3dnow;
     }
@@ -2838,11 +2809,11 @@ static void dsputil_init_3dnow(DSPContext *c, AVCodecContext *avctx,
 #endif
 }
 
-static void dsputil_init_3dnow2(DSPContext *c, AVCodecContext *avctx,
-                                int mm_flags)
+static void dsputil_init_3dnowext(DSPContext *c, AVCodecContext *avctx,
+                                  int mm_flags)
 {
 #if HAVE_6REGS && HAVE_INLINE_ASM
-    c->vector_fmul_window  = vector_fmul_window_3dnow2;
+    c->vector_fmul_window  = vector_fmul_window_3dnowext;
 #endif
 }
 
@@ -3049,19 +3020,6 @@ void ff_dsputil_init_mmx(DSPContext *c, AVCodecContext *avctx)
                 c->idct_add              = ff_simple_idct_add_mmx;
                 c->idct                  = ff_simple_idct_mmx;
                 c->idct_permutation_type = FF_SIMPLE_IDCT_PERM;
-#if CONFIG_GPL
-            } else if (idct_algo == FF_IDCT_LIBMPEG2MMX) {
-                if (mm_flags & AV_CPU_FLAG_MMX2) {
-                    c->idct_put = ff_libmpeg2mmx2_idct_put;
-                    c->idct_add = ff_libmpeg2mmx2_idct_add;
-                    c->idct     = ff_mmxext_idct;
-                } else {
-                    c->idct_put = ff_libmpeg2mmx_idct_put;
-                    c->idct_add = ff_libmpeg2mmx_idct_add;
-                    c->idct     = ff_mmx_idct;
-                }
-                c->idct_permutation_type = FF_LIBMPEG2_IDCT_PERM;
-#endif
             } else if (idct_algo == FF_IDCT_CAVS) {
                     c->idct_permutation_type = FF_TRANSPOSE_IDCT_PERM;
             } else if (idct_algo == FF_IDCT_XVIDMMX) {
@@ -3070,7 +3028,7 @@ void ff_dsputil_init_mmx(DSPContext *c, AVCodecContext *avctx)
                     c->idct_add              = ff_idct_xvid_sse2_add;
                     c->idct                  = ff_idct_xvid_sse2;
                     c->idct_permutation_type = FF_SSE2_IDCT_PERM;
-                } else if (mm_flags & AV_CPU_FLAG_MMX2) {
+                } else if (mm_flags & AV_CPU_FLAG_MMXEXT) {
                     c->idct_put              = ff_idct_xvid_mmx2_put;
                     c->idct_add              = ff_idct_xvid_mmx2_add;
                     c->idct                  = ff_idct_xvid_mmx2;
@@ -3086,14 +3044,14 @@ void ff_dsputil_init_mmx(DSPContext *c, AVCodecContext *avctx)
         dsputil_init_mmx(c, avctx, mm_flags);
     }
 
-    if (mm_flags & AV_CPU_FLAG_MMX2)
+    if (mm_flags & AV_CPU_FLAG_MMXEXT)
         dsputil_init_mmx2(c, avctx, mm_flags);
 
     if (mm_flags & AV_CPU_FLAG_3DNOW && HAVE_AMD3DNOW)
         dsputil_init_3dnow(c, avctx, mm_flags);
 
     if (mm_flags & AV_CPU_FLAG_3DNOWEXT && HAVE_AMD3DNOWEXT)
-        dsputil_init_3dnow2(c, avctx, mm_flags);
+        dsputil_init_3dnowext(c, avctx, mm_flags);
 
     if (mm_flags & AV_CPU_FLAG_SSE && HAVE_SSE)
         dsputil_init_sse(c, avctx, mm_flags);
