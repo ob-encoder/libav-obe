@@ -188,6 +188,11 @@ application specified in @var{app}, may be prefixed by "mp4:". You
 can override the value parsed from the URI through the @code{rtmp_playpath}
 option, too.
 
+@item listen
+Act as a server, listening for an incoming connection.
+
+@item timeout
+Maximum time to wait for the incoming connection. Implies listen.
 @end table
 
 Additionally, the following parameters can be set via command line options
@@ -242,8 +247,17 @@ Name of live stream to subscribe to. By default no value will be sent.
 It is only sent if the option is specified or if rtmp_live
 is set to live.
 
+@item rtmp_swfhash
+SHA256 hash of the decompressed SWF file (32 bytes).
+
+@item rtmp_swfsize
+Size of the decompressed SWF file, required for SWFVerification.
+
 @item rtmp_swfurl
 URL of the SWF player for the media. By default no value will be sent.
+
+@item rtmp_swfverify
+URL to player swf file, compute hash/size automatically.
 
 @item rtmp_tcurl
 URL of the target stream. Defaults to proto://host[:port]/app.

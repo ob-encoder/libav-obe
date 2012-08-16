@@ -20,6 +20,7 @@
 
 #include <stdint.h>
 
+#include "libavutil/common.h"
 #include "libavutil/libm.h"
 #include "libavutil/samplefmt.h"
 #include "avresample.h"
@@ -335,7 +336,9 @@ int ff_audio_mix_init(AVAudioResampleContext *avr)
                                       avr->out_channel_layout,
                                       avr->center_mix_level,
                                       avr->surround_mix_level,
-                                      avr->lfe_mix_level, 1, matrix_dbl,
+                                      avr->lfe_mix_level,
+                                      avr->normalize_mix_level,
+                                      matrix_dbl,
                                       avr->in_channels,
                                       avr->matrix_encoding);
         if (ret < 0) {

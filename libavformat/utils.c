@@ -789,30 +789,14 @@ static void compute_frame_duration(int *pnum, int *pden, AVStream *st,
     }
 }
 
-static int is_intra_only(AVCodecContext *enc){
-    if(enc->codec_type == AVMEDIA_TYPE_AUDIO){
-        return 1;
-    }else if(enc->codec_type == AVMEDIA_TYPE_VIDEO){
-        switch(enc->codec_id){
-        case AV_CODEC_ID_MJPEG:
-        case AV_CODEC_ID_MJPEGB:
-        case AV_CODEC_ID_LJPEG:
-        case AV_CODEC_ID_PRORES:
-        case AV_CODEC_ID_RAWVIDEO:
-        case AV_CODEC_ID_DVVIDEO:
-        case AV_CODEC_ID_HUFFYUV:
-        case AV_CODEC_ID_FFVHUFF:
-        case AV_CODEC_ID_ASV1:
-        case AV_CODEC_ID_ASV2:
-        case AV_CODEC_ID_VCR1:
-        case AV_CODEC_ID_DNXHD:
-        case AV_CODEC_ID_JPEG2000:
-        case AV_CODEC_ID_MDEC:
-            return 1;
-        default: break;
-        }
-    }
-    return 0;
+static int is_intra_only(enum AVCodecID id)
+{
+    const AVCodecDescriptor *d = avcodec_descriptor_get(id);
+    if (!d)
+        return 0;
+    if (d->type == AVMEDIA_TYPE_VIDEO && !(d->props & AV_CODEC_PROP_INTRA_ONLY))
+        return 0;
+    return 1;
 }
 
 static void update_initial_timestamps(AVFormatContext *s, int stream_index,
@@ -1034,7 +1018,7 @@ static void compute_pkt_fields(AVFormatContext *s, AVStream *st,
 //    av_log(NULL, AV_LOG_ERROR, "OUTdelayed:%d/%d pts:%"PRId64", dts:%"PRId64" cur_dts:%"PRId64"\n", presentation_delayed, delay, pkt->pts, pkt->dts, st->cur_dts);
 
     /* update flags */
-    if(is_intra_only(st->codec))
+    if (is_intra_only(st->codec->codec_id))
         pkt->flags |= AV_PKT_FLAG_KEY;
     if (pc)
         pkt->convergence_duration = pc->convergence_duration;
@@ -2409,6 +2393,19 @@ int avformat_find_stream_info(AVFormatContext *ic, AVDictionary **options)
                        st->info->fps_last_dts, st->codec_info_nb_frames, pkt->dts);
                 st->info->fps_first_dts = st->info->fps_last_dts = AV_NOPTS_VALUE;
             }
+            /* check for a discontinuity in dts - if the difference in dts
+             * is more than 1000 times the average packet duration in the sequence,
+             * we treat it as a discontinuity */
+            if (st->info->fps_last_dts != AV_NOPTS_VALUE &&
+                st->info->fps_last_dts_idx > st->info->fps_first_dts_idx &&
+                (pkt->dts - st->info->fps_last_dts) / 1000 >
+                (st->info->fps_last_dts - st->info->fps_first_dts) / (st->info->fps_last_dts_idx - st->info->fps_first_dts_idx)) {
+                av_log(ic, AV_LOG_WARNING, "DTS discontinuity in stream %d: "
+                       "packet %d with DTS %"PRId64", packet %d with DTS "
+                       "%"PRId64"\n", st->index, st->info->fps_last_dts_idx,
+                       st->info->fps_last_dts, st->codec_info_nb_frames, pkt->dts);
+                st->info->fps_first_dts = st->info->fps_last_dts = AV_NOPTS_VALUE;
+            }
 
             /* update stored dts values */
             if (st->info->fps_first_dts == AV_NOPTS_VALUE) {
@@ -2761,6 +2758,12 @@ AVStream *avformat_new_stream(AVFormatContext *s, AVCodec *c)
     st->reference_dts = AV_NOPTS_VALUE;
 
     st->sample_aspect_ratio = (AVRational){0,1};
+
+#if FF_API_R_FRAME_RATE
+    st->info->last_dts      = AV_NOPTS_VALUE;
+#endif
+    st->info->fps_first_dts = AV_NOPTS_VALUE;
+    st->info->fps_last_dts  = AV_NOPTS_VALUE;
 
     s->streams[s->nb_streams++] = st;
     return st;
@@ -3306,7 +3309,7 @@ static void print_fps(double d, const char *postfix){
 
 static void dump_metadata(void *ctx, AVDictionary *m, const char *indent)
 {
-    if(m && !(m->count == 1 && av_dict_get(m, "language", NULL, 0))){
+    if(m && !(av_dict_count(m) == 1 && av_dict_get(m, "language", NULL, 0))){
         AVDictionaryEntry *tag=NULL;
 
         av_log(ctx, AV_LOG_INFO, "%sMetadata:\n", indent);
