@@ -95,7 +95,7 @@ static av_cold int init(AVFilterContext *ctx, const char *args)
     av_strlcpy(scale->w_expr, "iw", sizeof(scale->w_expr));
     av_strlcpy(scale->h_expr, "ih", sizeof(scale->h_expr));
 
-    scale->flags = SWS_BILINEAR;
+    scale->flags = SWS_LANCZOS;
     if (args) {
         sscanf(args, "%255[^:]:%255[^:]", scale->w_expr, scale->h_expr);
         p = strstr(args,"flags=");
