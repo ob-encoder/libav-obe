@@ -549,7 +549,7 @@ static int gen_release_stream(URLContext *s, RTMPContext *rt)
     ff_amf_write_null(&p);
     ff_amf_write_string(&p, rt->playpath);
 
-    return rtmp_send_packet(rt, &pkt, 0);
+    return rtmp_send_packet(rt, &pkt, 1);
 }
 
 /**
@@ -573,7 +573,7 @@ static int gen_fcpublish_stream(URLContext *s, RTMPContext *rt)
     ff_amf_write_null(&p);
     ff_amf_write_string(&p, rt->playpath);
 
-    return rtmp_send_packet(rt, &pkt, 0);
+    return rtmp_send_packet(rt, &pkt, 1);
 }
 
 /**
@@ -1293,7 +1293,7 @@ static int rtmp_receive_hs_packet(RTMPContext* rt, uint32_t *first_int,
                                   uint32_t *second_int, char *arraydata,
                                   int size)
 {
-    ssize_t inoutsize;
+    int inoutsize;
 
     inoutsize = ffurl_read_complete(rt->stream, arraydata,
                                     RTMP_HANDSHAKE_PACKET_SIZE);
@@ -1313,7 +1313,7 @@ static int rtmp_receive_hs_packet(RTMPContext* rt, uint32_t *first_int,
 static int rtmp_send_hs_packet(RTMPContext* rt, uint32_t first_int,
                                uint32_t second_int, char *arraydata, int size)
 {
-    ssize_t inoutsize;
+    int inoutsize;
 
     AV_WB32(arraydata, first_int);
     AV_WB32(arraydata + 4, first_int);
@@ -1340,7 +1340,7 @@ static int rtmp_server_handshake(URLContext *s, RTMPContext *rt)
     uint32_t zeroes;
     uint32_t temp       = 0;
     int randomidx       = 0;
-    ssize_t inoutsize   = 0;
+    int inoutsize       = 0;
     int ret;
 
     inoutsize = ffurl_read_complete(rt->stream, buffer, 1);       // Receive C0
@@ -1525,8 +1525,11 @@ static int handle_invoke_error(URLContext *s, RTMPPacket *pkt)
 
     if (!ff_amf_get_field_value(pkt->data + 9, data_end,
                                 "description", tmpstr, sizeof(tmpstr))) {
-        if (tracked_method && !strcmp(tracked_method, "_checkbw")) {
-            /* Ignore _checkbw errors. */
+        if (tracked_method && (!strcmp(tracked_method, "_checkbw")      ||
+                               !strcmp(tracked_method, "releaseStream") ||
+                               !strcmp(tracked_method, "FCSubscribe")   ||
+                               !strcmp(tracked_method, "FCPublish"))) {
+            /* Gracefully ignore Adobe-specific historical artifact errors. */
             level = AV_LOG_WARNING;
             ret = 0;
         } else

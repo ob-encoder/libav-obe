@@ -581,7 +581,7 @@ static void show_stream(AVFormatContext *fmt_ctx, int stream_idx)
 {
     AVStream *stream = fmt_ctx->streams[stream_idx];
     AVCodecContext *dec_ctx;
-    AVCodec *dec;
+    const AVCodec *dec;
     const char *profile;
     char val_str[128];
     AVRational display_aspect_ratio;
@@ -868,11 +868,11 @@ static void opt_input_file(void *optctx, const char *arg)
     input_filename = arg;
 }
 
-static void show_help(void)
+void show_help_default(const char *opt, const char *arg)
 {
     av_log_set_callback(log_callback_help);
     show_usage();
-    show_help_options(options, "Main options:\n", 0, 0);
+    show_help_options(options, "Main options:", 0, 0, 0);
     printf("\n");
     show_help_children(avformat_get_class(), AV_OPT_FLAG_DECODING_PARAM);
 }
