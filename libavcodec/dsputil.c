@@ -359,8 +359,8 @@ static void diff_pixels_c(DCTELEM *restrict block, const uint8_t *s1,
 }
 
 
-void ff_put_pixels_clamped_c(const DCTELEM *block, uint8_t *restrict pixels,
-                             int line_size)
+static void put_pixels_clamped_c(const DCTELEM *block, uint8_t *restrict pixels,
+                                 int line_size)
 {
     int i;
 
@@ -380,9 +380,9 @@ void ff_put_pixels_clamped_c(const DCTELEM *block, uint8_t *restrict pixels,
     }
 }
 
-void ff_put_signed_pixels_clamped_c(const DCTELEM *block,
-                                    uint8_t *restrict pixels,
-                                    int line_size)
+static void put_signed_pixels_clamped_c(const DCTELEM *block,
+                                        uint8_t *restrict pixels,
+                                        int line_size)
 {
     int i, j;
 
@@ -401,8 +401,8 @@ void ff_put_signed_pixels_clamped_c(const DCTELEM *block,
     }
 }
 
-void ff_add_pixels_clamped_c(const DCTELEM *block, uint8_t *restrict pixels,
-                             int line_size)
+static void add_pixels_clamped_c(const DCTELEM *block, uint8_t *restrict pixels,
+                                 int line_size)
 {
     int i;
 
@@ -2424,7 +2424,7 @@ static void butterflies_float_interleave_c(float *dst, const float *src0,
     }
 }
 
-static float scalarproduct_float_c(const float *v1, const float *v2, int len)
+float ff_scalarproduct_float_c(const float *v1, const float *v2, int len)
 {
     float p = 0.0;
     int i;
@@ -2606,22 +2606,22 @@ void ff_wmv2_idct_c(short * block){
 static void ff_wmv2_idct_put_c(uint8_t *dest, int line_size, DCTELEM *block)
 {
     ff_wmv2_idct_c(block);
-    ff_put_pixels_clamped_c(block, dest, line_size);
+    put_pixels_clamped_c(block, dest, line_size);
 }
 static void ff_wmv2_idct_add_c(uint8_t *dest, int line_size, DCTELEM *block)
 {
     ff_wmv2_idct_c(block);
-    ff_add_pixels_clamped_c(block, dest, line_size);
+    add_pixels_clamped_c(block, dest, line_size);
 }
 static void ff_jref_idct_put(uint8_t *dest, int line_size, DCTELEM *block)
 {
     ff_j_rev_dct (block);
-    ff_put_pixels_clamped_c(block, dest, line_size);
+    put_pixels_clamped_c(block, dest, line_size);
 }
 static void ff_jref_idct_add(uint8_t *dest, int line_size, DCTELEM *block)
 {
     ff_j_rev_dct (block);
-    ff_add_pixels_clamped_c(block, dest, line_size);
+    add_pixels_clamped_c(block, dest, line_size);
 }
 
 static void just_return(void *mem av_unused, int stride av_unused, int h av_unused) { return; }
@@ -2720,9 +2720,9 @@ av_cold void ff_dsputil_init(DSPContext* c, AVCodecContext *avctx)
     }
 
     c->diff_pixels = diff_pixels_c;
-    c->put_pixels_clamped = ff_put_pixels_clamped_c;
-    c->put_signed_pixels_clamped = ff_put_signed_pixels_clamped_c;
-    c->add_pixels_clamped = ff_add_pixels_clamped_c;
+    c->put_pixels_clamped = put_pixels_clamped_c;
+    c->put_signed_pixels_clamped = put_signed_pixels_clamped_c;
+    c->add_pixels_clamped = add_pixels_clamped_c;
     c->sum_abs_dctelem = sum_abs_dctelem_c;
     c->gmc1 = gmc1_c;
     c->gmc = ff_gmc_c;
@@ -2796,9 +2796,6 @@ av_cold void ff_dsputil_init(DSPContext* c, AVCodecContext *avctx)
 
 #if CONFIG_MLP_DECODER || CONFIG_TRUEHD_DECODER
     ff_mlp_init(c, avctx);
-#endif
-#if CONFIG_WMV2_DECODER || CONFIG_VC1_DECODER
-    ff_intrax8dsp_init(c,avctx);
 #endif
 
     c->put_mspel_pixels_tab[0]= ff_put_pixels8x8_c;
@@ -2877,7 +2874,7 @@ av_cold void ff_dsputil_init(DSPContext* c, AVCodecContext *avctx)
     c->scalarproduct_and_madd_int16 = scalarproduct_and_madd_int16_c;
     c->apply_window_int16 = apply_window_int16_c;
     c->vector_clip_int32 = vector_clip_int32_c;
-    c->scalarproduct_float = scalarproduct_float_c;
+    c->scalarproduct_float = ff_scalarproduct_float_c;
     c->butterflies_float = butterflies_float_c;
     c->butterflies_float_interleave = butterflies_float_interleave_c;
     c->vector_fmul_scalar = vector_fmul_scalar_c;

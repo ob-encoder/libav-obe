@@ -42,8 +42,10 @@ version <next>:
 - RTMPE protocol support
 - RTMPTE protocol support
 - Canopus Lossless Codec decoder
-- avconv -shortest option is now per-output file
+- avconv -shortest option is now per-output file,
+  -pass and -passlogfile are now per-output stream
 - Ut Video encoder
+- Microsoft Screen 2 decoder
 
 
 version 0.8:

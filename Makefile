@@ -10,7 +10,7 @@ vpath %.texi $(SRC_PATH)
 ifndef V
 Q      = @
 ECHO   = printf "$(1)\t%s\n" $(2)
-BRIEF  = CC HOSTCC AS YASM AR LD
+BRIEF  = CC HOSTCC HOSTLD AS YASM AR LD
 SILENT = DEPCC DEPHOSTCC DEPAS DEPYASM RANLIB RM
 MSG    = $@
 M      = @$(call ECHO,$(TAG),$@);
@@ -29,7 +29,7 @@ CCFLAGS     = $(CPPFLAGS) $(CFLAGS)
 ASFLAGS    := $(CPPFLAGS) $(ASFLAGS)
 YASMFLAGS  += $(IFLAGS:%=%/) -I$(SRC_PATH)/libavutil/x86/ -Pconfig.asm
 HOSTCCFLAGS = $(IFLAGS) $(HOSTCFLAGS)
-LDFLAGS    := $(ALLFFLIBS:%=-Llib%) $(LDFLAGS)
+LDFLAGS    := $(ALLFFLIBS:%=$(LD_PATH)lib%) $(LDFLAGS)
 
 define COMPILE
 	$(call $(1)DEP,$(1))
@@ -91,9 +91,9 @@ FF_DEP_LIBS  := $(DEP_LIBS)
 all: $(PROGS)
 
 $(TOOLS): %$(EXESUF): %.o
-	$(LD) $(LDFLAGS) -o $@ $< $(ELIBS)
+	$(LD) $(LDFLAGS) $(LD_O) $< $(ELIBS)
 
-tools/cws2fws$(EXESUF): ELIBS = -lz
+tools/cws2fws$(EXESUF): ELIBS = $(ZLIB)
 
 config.h: .config
 .config: $(wildcard $(FFLIBS:%=$(SRC_PATH)/lib%/all*.c))
@@ -135,7 +135,7 @@ endef
 $(foreach P,$(PROGS-yes),$(eval $(call DOPROG,$(P))))
 
 $(PROGS): %$(EXESUF): %.o cmdutils.o $(FF_DEP_LIBS)
-	$(LD) $(LDFLAGS) -o $@ $(OBJS-$*) cmdutils.o $(FF_EXTRALIBS)
+	$(LD) $(LDFLAGS) $(LD_O) $(OBJS-$*) cmdutils.o $(FF_EXTRALIBS)
 
 OBJDIRS += tools
 

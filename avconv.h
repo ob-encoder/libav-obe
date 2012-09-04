@@ -158,6 +158,10 @@ typedef struct OptionsContext {
     int        nb_copy_initial_nonkeyframes;
     SpecifierOpt *filters;
     int        nb_filters;
+    SpecifierOpt *pass;
+    int        nb_pass;
+    SpecifierOpt *passlogfiles;
+    int        nb_passlogfiles;
 } OptionsContext;
 
 typedef struct InputFilter {
@@ -282,6 +286,7 @@ typedef struct OutputStream {
     int forced_kf_index;
     char *forced_keyframes;
 
+    char *logfile_prefix;
     FILE *logfile;
 
     OutputFilter *filter;
@@ -321,7 +326,6 @@ extern int         nb_output_files;
 extern FilterGraph **filtergraphs;
 extern int        nb_filtergraphs;
 
-extern char *pass_logfilename_prefix;
 extern char *vstats_filename;
 
 extern float audio_drift_threshold;
@@ -348,7 +352,7 @@ extern const OptionDef options[];
 void reset_options(OptionsContext *o);
 void show_usage(void);
 
-int opt_cpuflags(const char *opt, const char *arg);
+int opt_cpuflags(void *optctx, const char *opt, const char *arg);
 
 void opt_output_file(void *optctx, const char *filename);
 

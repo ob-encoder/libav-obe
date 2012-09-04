@@ -794,7 +794,7 @@ static void show_usage(void)
     printf("\n");
 }
 
-static int opt_format(const char *opt, const char *arg)
+static int opt_format(void *optctx, const char *opt, const char *arg)
 {
     iformat = av_find_input_format(arg);
     if (!iformat) {
@@ -804,7 +804,7 @@ static int opt_format(const char *opt, const char *arg)
     return 0;
 }
 
-static int opt_output_format(const char *opt, const char *arg)
+static int opt_output_format(void *optctx, const char *opt, const char *arg)
 {
 
     if (!strcmp(arg, "json")) {
@@ -838,7 +838,7 @@ static int opt_output_format(const char *opt, const char *arg)
     return 0;
 }
 
-static int opt_show_format_entry(const char *opt, const char *arg)
+static int opt_show_format_entry(void *optctx, const char *opt, const char *arg)
 {
     do_show_format = 1;
     nb_fmt_entries_to_show++;
@@ -877,34 +877,35 @@ void show_help_default(const char *opt, const char *arg)
     show_help_children(avformat_get_class(), AV_OPT_FLAG_DECODING_PARAM);
 }
 
-static void opt_pretty(void)
+static int opt_pretty(void *optctx, const char *opt, const char *arg)
 {
     show_value_unit              = 1;
     use_value_prefix             = 1;
     use_byte_value_binary_prefix = 1;
     use_value_sexagesimal_format = 1;
+    return 0;
 }
 
 static const OptionDef real_options[] = {
 #include "cmdutils_common_opts.h"
-    { "f", HAS_ARG, {(void*)opt_format}, "force format", "format" },
-    { "of", HAS_ARG, {(void*)&opt_output_format}, "output the document either as ini or json", "output_format" },
-    { "unit", OPT_BOOL, {(void*)&show_value_unit},
+    { "f", HAS_ARG, {.func_arg = opt_format}, "force format", "format" },
+    { "of", HAS_ARG, {.func_arg = opt_output_format}, "output the document either as ini or json", "output_format" },
+    { "unit", OPT_BOOL, {&show_value_unit},
       "show unit of the displayed values" },
-    { "prefix", OPT_BOOL, {(void*)&use_value_prefix},
+    { "prefix", OPT_BOOL, {&use_value_prefix},
       "use SI prefixes for the displayed values" },
-    { "byte_binary_prefix", OPT_BOOL, {(void*)&use_byte_value_binary_prefix},
+    { "byte_binary_prefix", OPT_BOOL, {&use_byte_value_binary_prefix},
       "use binary prefixes for byte units" },
-    { "sexagesimal", OPT_BOOL,  {(void*)&use_value_sexagesimal_format},
+    { "sexagesimal", OPT_BOOL,  {&use_value_sexagesimal_format},
       "use sexagesimal format HOURS:MM:SS.MICROSECONDS for time units" },
-    { "pretty", 0, {(void*)&opt_pretty},
+    { "pretty", 0, {.func_arg = opt_pretty},
       "prettify the format of displayed values, make it more human readable" },
-    { "show_format",  OPT_BOOL, {(void*)&do_show_format} , "show format/container info" },
-    { "show_format_entry", HAS_ARG, {(void*)opt_show_format_entry},
+    { "show_format",  OPT_BOOL, {&do_show_format} , "show format/container info" },
+    { "show_format_entry", HAS_ARG, {.func_arg = opt_show_format_entry},
       "show a particular entry from the format/container info", "entry" },
-    { "show_packets", OPT_BOOL, {(void*)&do_show_packets}, "show packets info" },
-    { "show_streams", OPT_BOOL, {(void*)&do_show_streams}, "show streams info" },
-    { "default", HAS_ARG | OPT_AUDIO | OPT_VIDEO | OPT_EXPERT, {(void*)opt_default},
+    { "show_packets", OPT_BOOL, {&do_show_packets}, "show packets info" },
+    { "show_streams", OPT_BOOL, {&do_show_streams}, "show streams info" },
+    { "default", HAS_ARG | OPT_AUDIO | OPT_VIDEO | OPT_EXPERT, {.func_arg = opt_default},
       "generic catch all option", "" },
     { NULL, },
 };

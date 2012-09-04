@@ -32,6 +32,7 @@
 #include "dsputil.h"
 #include "mathops.h"
 #include "utvideo.h"
+#include "huffman.h"
 
 /* Compare huffentry symbols */
 static int huff_cmp_sym(const void *a, const void *b)
@@ -43,10 +44,12 @@ static int huff_cmp_sym(const void *a, const void *b)
 static av_cold int utvideo_encode_close(AVCodecContext *avctx)
 {
     UtvideoContext *c = avctx->priv_data;
+    int i;
 
     av_freep(&avctx->coded_frame);
     av_freep(&c->slice_bits);
-    av_freep(&c->slice_buffer);
+    for (i = 0; i < 4; i++)
+        av_freep(&c->slice_buffer[i]);
 
     return 0;
 }
@@ -54,11 +57,12 @@ static av_cold int utvideo_encode_close(AVCodecContext *avctx)
 static av_cold int utvideo_encode_init(AVCodecContext *avctx)
 {
     UtvideoContext *c = avctx->priv_data;
-
+    int i;
     uint32_t original_format;
 
     c->avctx           = avctx;
     c->frame_info_size = 4;
+    c->slice_stride    = FFALIGN(avctx->width, 32);
 
     switch (avctx->pix_fmt) {
     case PIX_FMT_RGB24:
@@ -141,13 +145,14 @@ static av_cold int utvideo_encode_init(AVCodecContext *avctx)
         return AVERROR(ENOMEM);
     }
 
-    c->slice_buffer = av_malloc(avctx->width * avctx->height +
-                                FF_INPUT_BUFFER_PADDING_SIZE);
-
-    if (!c->slice_buffer) {
-        av_log(avctx, AV_LOG_ERROR, "Cannot allocate temporary buffer 1.\n");
-        utvideo_encode_close(avctx);
-        return AVERROR(ENOMEM);
+    for (i = 0; i < c->planes; i++) {
+        c->slice_buffer[i] = av_malloc(c->slice_stride * (avctx->height + 2) +
+                                       FF_INPUT_BUFFER_PADDING_SIZE);
+        if (!c->slice_buffer[i]) {
+            av_log(avctx, AV_LOG_ERROR, "Cannot allocate temporary buffer 1.\n");
+            utvideo_encode_close(avctx);
+            return AVERROR(ENOMEM);
+        }
     }
 
     /*
@@ -192,33 +197,47 @@ static av_cold int utvideo_encode_init(AVCodecContext *avctx)
     return 0;
 }
 
-static void mangle_rgb_planes(uint8_t *src, int step, int stride, int width,
-                              int height)
+static void mangle_rgb_planes(uint8_t *dst[4], int dst_stride, uint8_t *src,
+                              int step, int stride, int width, int height)
 {
     int i, j;
-    uint8_t r, g, b;
+    int k = 2 * dst_stride;
+    unsigned int g;
 
     for (j = 0; j < height; j++) {
-        for (i = 0; i < width * step; i += step) {
-            r = src[i];
-            g = src[i + 1];
-            b = src[i + 2];
-
-            src[i]     = r - g + 0x80;
-            src[i + 2] = b - g + 0x80;
+        if (step == 3) {
+            for (i = 0; i < width * step; i += step) {
+                g         = src[i + 1];
+                dst[0][k] = g;
+                g        += 0x80;
+                dst[1][k] = src[i + 2] - g;
+                dst[2][k] = src[i + 0] - g;
+                k++;
+            }
+        } else {
+            for (i = 0; i < width * step; i += step) {
+                g         = src[i + 1];
+                dst[0][k] = g;
+                g        += 0x80;
+                dst[1][k] = src[i + 2] - g;
+                dst[2][k] = src[i + 0] - g;
+                dst[3][k] = src[i + 3];
+                k++;
+            }
         }
+        k += dst_stride - width;
         src += stride;
     }
 }
 
 /* Write data to a plane, no prediction applied */
-static void write_plane(uint8_t *src, uint8_t *dst, int step, int stride,
+static void write_plane(uint8_t *src, uint8_t *dst, int stride,
                         int width, int height)
 {
     int i, j;
 
     for (j = 0; j < height; j++) {
-        for (i = 0; i < width * step; i += step)
+        for (i = 0; i < width; i++)
             *dst++ = src[i];
 
         src += stride;
@@ -226,7 +245,7 @@ static void write_plane(uint8_t *src, uint8_t *dst, int step, int stride,
 }
 
 /* Write data to a plane with left prediction */
-static void left_predict(uint8_t *src, uint8_t *dst, int step, int stride,
+static void left_predict(uint8_t *src, uint8_t *dst, int stride,
                          int width, int height)
 {
     int i, j;
@@ -234,7 +253,7 @@ static void left_predict(uint8_t *src, uint8_t *dst, int step, int stride,
 
     prev = 0x80; /* Set the initial value */
     for (j = 0; j < height; j++) {
-        for (i = 0; i < width * step; i += step) {
+        for (i = 0; i < width; i++) {
             *dst++ = src[i] - prev;
             prev   = src[i];
         }
@@ -243,16 +262,16 @@ static void left_predict(uint8_t *src, uint8_t *dst, int step, int stride,
 }
 
 /* Write data to a plane with median prediction */
-static void median_predict(uint8_t *src, uint8_t *dst, int step, int stride,
+static void median_predict(UtvideoContext *c, uint8_t *src, uint8_t *dst, int stride,
                            int width, int height)
 {
     int i, j;
-    int A, B, C;
+    int A, B;
     uint8_t prev;
 
     /* First line uses left neighbour prediction */
     prev = 0x80; /* Set the initial value */
-    for (i = 0; i < width * step; i += step) {
+    for (i = 0; i < width; i++) {
         *dst++ = src[i] - prev;
         prev   = src[i];
     }
@@ -266,33 +285,19 @@ static void median_predict(uint8_t *src, uint8_t *dst, int step, int stride,
      * Second line uses top prediction for the first sample,
      * and median for the rest.
      */
-    C      = src[-stride];
-    *dst++ = src[0] - C;
-    A      = src[0];
-    for (i = step; i < width * step; i += step) {
-        B       = src[i - stride];
-        *dst++  = src[i] - mid_pred(A, B, (A + B - C) & 0xFF);
-        C       = B;
-        A       = src[i];
-    }
-
-    src += stride;
+    A = B = 0;
 
     /* Rest of the coded part uses median prediction */
-    for (j = 2; j < height; j++) {
-        for (i = 0; i < width * step; i += step) {
-            B       = src[i - stride];
-            *dst++  = src[i] - mid_pred(A, B, (A + B - C) & 0xFF);
-            C       = B;
-            A       = src[i];
-        }
+    for (j = 1; j < height; j++) {
+        c->dsp.sub_hfyu_median_prediction(dst, src - stride, src, width, &A, &B);
+        dst += width;
         src += stride;
     }
 }
 
 /* Count the usage of values in a plane */
 static void count_usage(uint8_t *src, int width,
-                        int height, uint32_t *counts)
+                        int height, uint64_t *counts)
 {
     int i, j;
 
@@ -301,119 +306,6 @@ static void count_usage(uint8_t *src, int width,
             counts[src[i]]++;
         }
         src += width;
-    }
-}
-
-static uint32_t add_weights(uint32_t w1, uint32_t w2)
-{
-    uint32_t max = (w1 & 0xFF) > (w2 & 0xFF) ? (w1 & 0xFF) : (w2 & 0xFF);
-
-    return ((w1 & 0xFFFFFF00) + (w2 & 0xFFFFFF00)) | (1 + max);
-}
-
-static void up_heap(uint32_t val, uint32_t *heap, uint32_t *weights)
-{
-    uint32_t initial_val = heap[val];
-
-    while (weights[initial_val] < weights[heap[val >> 1]]) {
-        heap[val] = heap[val >> 1];
-        val     >>= 1;
-    }
-
-    heap[val] = initial_val;
-}
-
-static void down_heap(uint32_t nr_heap, uint32_t *heap, uint32_t *weights)
-{
-    uint32_t val = 1;
-    uint32_t val2;
-    uint32_t initial_val = heap[val];
-
-    while (1) {
-        val2 = val << 1;
-
-        if (val2 > nr_heap)
-            break;
-
-        if (val2 < nr_heap && weights[heap[val2 + 1]] < weights[heap[val2]])
-            val2++;
-
-        if (weights[initial_val] < weights[heap[val2]])
-            break;
-
-        heap[val] = heap[val2];
-
-        val = val2;
-    }
-
-    heap[val] = initial_val;
-}
-
-/* Calculate the huffman code lengths from value counts */
-static void calculate_code_lengths(uint8_t *lengths, uint32_t *counts)
-{
-    uint32_t nr_nodes, nr_heap, node1, node2;
-    int      i, j;
-    int32_t  k;
-
-    /* Heap and node entries start from 1 */
-    uint32_t weights[512];
-    uint32_t heap[512];
-    int32_t  parents[512];
-
-    /* Set initial weights */
-    for (i = 0; i < 256; i++)
-        weights[i + 1] = (counts[i] ? counts[i] : 1) << 8;
-
-    nr_nodes = 256;
-    nr_heap  = 0;
-
-    heap[0]    = 0;
-    weights[0] = 0;
-    parents[0] = -2;
-
-    /* Create initial nodes */
-    for (i = 1; i <= 256; i++) {
-        parents[i] = -1;
-
-        heap[++nr_heap] = i;
-        up_heap(nr_heap, heap, weights);
-    }
-
-    /* Build the tree */
-    while (nr_heap > 1) {
-        node1   = heap[1];
-        heap[1] = heap[nr_heap--];
-
-        down_heap(nr_heap, heap, weights);
-
-        node2   = heap[1];
-        heap[1] = heap[nr_heap--];
-
-        down_heap(nr_heap, heap, weights);
-
-        nr_nodes++;
-
-        parents[node1]    = parents[node2] = nr_nodes;
-        weights[nr_nodes] = add_weights(weights[node1], weights[node2]);
-        parents[nr_nodes] = -1;
-
-        heap[++nr_heap] = nr_nodes;
-
-        up_heap(nr_heap, heap, weights);
-    }
-
-    /* Generate lengths */
-    for (i = 1; i <= 256; i++) {
-        j = 0;
-        k = i;
-
-        while (parents[k] >= 0) {
-            k = parents[k];
-            j++;
-        }
-
-        lengths[i - 1] = j;
     }
 }
 
@@ -472,12 +364,12 @@ static int write_huff_codes(uint8_t *src, uint8_t *dst, int dst_size,
 }
 
 static int encode_plane(AVCodecContext *avctx, uint8_t *src,
-                        uint8_t *dst, int step, int stride,
+                        uint8_t *dst, int stride,
                         int width, int height, PutByteContext *pb)
 {
     UtvideoContext *c        = avctx->priv_data;
     uint8_t  lengths[256];
-    uint32_t counts[256]     = { 0 };
+    uint64_t counts[256]     = { 0 };
 
     HuffEntry he[256];
 
@@ -492,7 +384,7 @@ static int encode_plane(AVCodecContext *avctx, uint8_t *src,
             sstart = send;
             send   = height * (i + 1) / c->slices;
             write_plane(src + sstart * stride, dst + sstart * width,
-                        step, stride, width, send - sstart);
+                        stride, width, send - sstart);
         }
         break;
     case PRED_LEFT:
@@ -500,15 +392,15 @@ static int encode_plane(AVCodecContext *avctx, uint8_t *src,
             sstart = send;
             send   = height * (i + 1) / c->slices;
             left_predict(src + sstart * stride, dst + sstart * width,
-                         step, stride, width, send - sstart);
+                         stride, width, send - sstart);
         }
         break;
     case PRED_MEDIAN:
         for (i = 0; i < c->slices; i++) {
             sstart = send;
             send   = height * (i + 1) / c->slices;
-            median_predict(src + sstart * stride, dst + sstart * width,
-                           step, stride, width, send - sstart);
+            median_predict(c, src + sstart * stride, dst + sstart * width,
+                           stride, width, send - sstart);
         }
         break;
     default:
@@ -549,7 +441,7 @@ static int encode_plane(AVCodecContext *avctx, uint8_t *src,
     }
 
     /* Calculate huffman lengths */
-    calculate_code_lengths(lengths, counts);
+    ff_huff_gen_len_table(lengths, counts);
 
     /*
      * Write the plane's header into the output packet:
@@ -647,16 +539,16 @@ static int utvideo_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
 
     /* In case of RGB, mangle the planes to Ut Video's format */
     if (avctx->pix_fmt == PIX_FMT_RGBA || avctx->pix_fmt == PIX_FMT_RGB24)
-        mangle_rgb_planes(pic->data[0], c->planes, pic->linesize[0], width,
-                          height);
+        mangle_rgb_planes(c->slice_buffer, c->slice_stride, pic->data[0],
+                          c->planes, pic->linesize[0], width, height);
 
     /* Deal with the planes */
     switch (avctx->pix_fmt) {
     case PIX_FMT_RGB24:
     case PIX_FMT_RGBA:
         for (i = 0; i < c->planes; i++) {
-            ret = encode_plane(avctx, pic->data[0] + ff_ut_rgb_order[i],
-                               c->slice_buffer, c->planes, pic->linesize[0],
+            ret = encode_plane(avctx, c->slice_buffer[i] + 2 * c->slice_stride,
+                               c->slice_buffer[i], c->slice_stride,
                                width, height, &pb);
 
             if (ret) {
@@ -667,7 +559,7 @@ static int utvideo_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
         break;
     case PIX_FMT_YUV422P:
         for (i = 0; i < c->planes; i++) {
-            ret = encode_plane(avctx, pic->data[i], c->slice_buffer, 1,
+            ret = encode_plane(avctx, pic->data[i], c->slice_buffer[0],
                                pic->linesize[i], width >> !!i, height, &pb);
 
             if (ret) {
@@ -678,7 +570,7 @@ static int utvideo_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
         break;
     case PIX_FMT_YUV420P:
         for (i = 0; i < c->planes; i++) {
-            ret = encode_plane(avctx, pic->data[i], c->slice_buffer, 1,
+            ret = encode_plane(avctx, pic->data[i], c->slice_buffer[0],
                                pic->linesize[i], width >> !!i, height >> !!i,
                                &pb);
 

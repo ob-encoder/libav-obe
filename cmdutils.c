@@ -286,8 +286,7 @@ int parse_option(void *optctx, const char *opt, const char *arg,
     } else if (po->flags & OPT_DOUBLE) {
         *(double *)dst = parse_number_or_die(opt, arg, OPT_DOUBLE, -INFINITY, INFINITY);
     } else if (po->u.func_arg) {
-        int ret = po->flags & OPT_FUNC2 ? po->u.func2_arg(optctx, opt, arg)
-                                        : po->u.func_arg(opt, arg);
+        int ret = po->u.func_arg(optctx, opt, arg);
         if (ret < 0) {
             av_log(NULL, AV_LOG_ERROR,
                    "Failed to set value '%s' for option '%s'\n", arg, opt);
@@ -362,11 +361,11 @@ void parse_loglevel(int argc, char **argv, const OptionDef *options)
     if (!idx)
         idx = locate_option(argc, argv, options, "v");
     if (idx && argv[idx + 1])
-        opt_loglevel("loglevel", argv[idx + 1]);
+        opt_loglevel(NULL, "loglevel", argv[idx + 1]);
 }
 
 #define FLAGS (o->type == AV_OPT_TYPE_FLAGS) ? AV_DICT_APPEND : 0
-int opt_default(const char *opt, const char *arg)
+int opt_default(void *optctx, const char *opt, const char *arg)
 {
     const AVOption *o;
     char opt_stripped[128];
@@ -401,7 +400,7 @@ int opt_default(const char *opt, const char *arg)
     return AVERROR_OPTION_NOT_FOUND;
 }
 
-int opt_loglevel(const char *opt, const char *arg)
+int opt_loglevel(void *optctx, const char *opt, const char *arg)
 {
     const struct { const char *name; int level; } log_levels[] = {
         { "quiet"  , AV_LOG_QUIET   },
@@ -436,7 +435,7 @@ int opt_loglevel(const char *opt, const char *arg)
     return 0;
 }
 
-int opt_timelimit(const char *opt, const char *arg)
+int opt_timelimit(void *optctx, const char *opt, const char *arg)
 {
 #if HAVE_SETRLIMIT
     int lim = parse_number_or_die(opt, arg, OPT_INT64, 0, INT_MAX);
@@ -516,7 +515,7 @@ void show_banner(void)
     print_all_libs_info(INDENT|SHOW_VERSION, AV_LOG_VERBOSE);
 }
 
-int show_version(const char *opt, const char *arg)
+int show_version(void *optctx, const char *opt, const char *arg)
 {
     av_log_set_callback(log_callback_help);
     printf("%s " LIBAV_VERSION "\n", program_name);
@@ -525,7 +524,7 @@ int show_version(const char *opt, const char *arg)
     return 0;
 }
 
-int show_license(const char *opt, const char *arg)
+int show_license(void *optctx, const char *opt, const char *arg)
 {
     printf(
 #if CONFIG_NONFREE
@@ -596,7 +595,7 @@ int show_license(const char *opt, const char *arg)
     return 0;
 }
 
-int show_formats(const char *opt, const char *arg)
+int show_formats(void *optctx, const char *opt, const char *arg)
 {
     AVInputFormat *ifmt  = NULL;
     AVOutputFormat *ofmt = NULL;
@@ -736,18 +735,20 @@ static void print_codecs_for_id(enum AVCodecID id, int encoder)
     printf(")");
 }
 
-int show_codecs(const char *opt, const char *arg)
+int show_codecs(void *optctx, const char *opt, const char *arg)
 {
     const AVCodecDescriptor *desc = NULL;
 
     printf("Codecs:\n"
-           " D... = Decoding supported\n"
-           " .E.. = Encoding supported\n"
-           " ..V. = Video codec\n"
-           " ..A. = Audio codec\n"
-           " ..S. = Subtitle codec\n"
-           " ...I = Intra frame-only codec\n"
-           " -----\n");
+           " D..... = Decoding supported\n"
+           " .E.... = Encoding supported\n"
+           " ..V... = Video codec\n"
+           " ..A... = Audio codec\n"
+           " ..S... = Subtitle codec\n"
+           " ...I.. = Intra frame-only codec\n"
+           " ....L. = Lossy compression\n"
+           " .....S = Lossless compression\n"
+           " -------\n");
     while ((desc = avcodec_descriptor_next(desc))) {
         const AVCodec *codec = NULL;
 
@@ -756,6 +757,8 @@ int show_codecs(const char *opt, const char *arg)
 
         printf("%c", get_media_type_char(desc->type));
         printf((desc->props & AV_CODEC_PROP_INTRA_ONLY) ? "I" : ".");
+        printf((desc->props & AV_CODEC_PROP_LOSSY)      ? "L" : ".");
+        printf((desc->props & AV_CODEC_PROP_LOSSLESS)   ? "S" : ".");
 
         printf(" %-20s %s", desc->name, desc->long_name ? desc->long_name : "");
 
@@ -811,19 +814,19 @@ static void print_codecs(int encoder)
     }
 }
 
-int show_decoders(const char *opt, const char *arg)
+int show_decoders(void *optctx, const char *opt, const char *arg)
 {
     print_codecs(0);
     return 0;
 }
 
-int show_encoders(const char *opt, const char *arg)
+int show_encoders(void *optctx, const char *opt, const char *arg)
 {
     print_codecs(1);
     return 0;
 }
 
-int show_bsfs(const char *opt, const char *arg)
+int show_bsfs(void *optctx, const char *opt, const char *arg)
 {
     AVBitStreamFilter *bsf = NULL;
 
@@ -834,7 +837,7 @@ int show_bsfs(const char *opt, const char *arg)
     return 0;
 }
 
-int show_protocols(const char *opt, const char *arg)
+int show_protocols(void *optctx, const char *opt, const char *arg)
 {
     void *opaque = NULL;
     const char *name;
@@ -849,7 +852,7 @@ int show_protocols(const char *opt, const char *arg)
     return 0;
 }
 
-int show_filters(const char *opt, const char *arg)
+int show_filters(void *optctx, const char *opt, const char *arg)
 {
     AVFilter av_unused(**filter) = NULL;
 
@@ -861,7 +864,7 @@ int show_filters(const char *opt, const char *arg)
     return 0;
 }
 
-int show_pix_fmts(const char *opt, const char *arg)
+int show_pix_fmts(void *optctx, const char *opt, const char *arg)
 {
     enum PixelFormat pix_fmt;
 
@@ -894,7 +897,7 @@ int show_pix_fmts(const char *opt, const char *arg)
     return 0;
 }
 
-int show_sample_fmts(const char *opt, const char *arg)
+int show_sample_fmts(void *optctx, const char *opt, const char *arg)
 {
     int i;
     char fmt_str[128];
@@ -989,7 +992,7 @@ static void show_help_muxer(const char *name)
         show_help_children(fmt->priv_class, AV_OPT_FLAG_ENCODING_PARAM);
 }
 
-int show_help(const char *opt, const char *arg)
+int show_help(void *optctx, const char *opt, const char *arg)
 {
     char *topic, *par;
     av_log_set_callback(log_callback_help);

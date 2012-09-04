@@ -213,6 +213,7 @@ Advanced options (experts only):
   --ld=LD                  use linker LD
   --host-cc=HOSTCC         use host C compiler HOSTCC
   --host-cflags=HCFLAGS    use HCFLAGS when compiling for host
+  --host-ld=HOSTLD         use host linker HOSTLD
   --host-ldflags=HLDFLAGS  use HLDFLAGS when linking for host
   --host-libs=HLIBS        use libs HLIBS when linking for host
   --host-os=OS             compiler host OS [$target_os]
@@ -244,7 +245,11 @@ Optimization options (experts only):
   --disable-mmx            disable MMX optimizations
   --disable-mmxext         disable MMXEXT optimizations
   --disable-sse            disable SSE optimizations
+  --disable-sse2           disable SSE2 optimizations
+  --disable-sse3           disable SSE3 optimizations
   --disable-ssse3          disable SSSE3 optimizations
+  --disable-sse4           disable SSE4 optimizations
+  --disable-sse42          disable SSE4.2 optimizations
   --disable-avx            disable AVX optimizations
   --disable-fma4           disable FMA4 optimizations
   --disable-armv5te        disable armv5te optimizations
@@ -366,6 +371,12 @@ map(){
     m=$1
     shift
     for v; do eval $m; done
+}
+
+add_suffix(){
+    suffix=$1
+    shift
+    for v; do echo ${v}${suffix}; done
 }
 
 set_all(){
@@ -652,11 +663,15 @@ check_cpp(){
     check_cmd $cc $CPPFLAGS $CFLAGS "$@" $(cc_e $TMPO) $TMPC
 }
 
+as_o(){
+    eval printf '%s\\n' $AS_O
+}
+
 check_as(){
     log check_as "$@"
     cat > $TMPC
     log_file $TMPC
-    check_cmd $as $CPPFLAGS $ASFLAGS "$@" $AS_C -o $TMPO $TMPC
+    check_cmd $as $CPPFLAGS $ASFLAGS "$@" $AS_C $(as_o $TMPO) $TMPC
 }
 
 check_inline_asm(){
@@ -678,6 +693,10 @@ check_yasm(){
     check_cmd $yasmexe $YASMFLAGS "$@" -o $TMPO $TMPS
 }
 
+ld_o(){
+    eval printf '%s\\n' $LD_O
+}
+
 check_ld(){
     log check_ld "$@"
     flags=''
@@ -688,7 +707,7 @@ check_ld(){
     check_cc $($cflags_filter $flags) || return
     flags=$($ldflags_filter $flags)
     libs=$($ldflags_filter $libs)
-    check_cmd $ld $LDFLAGS $flags -o $TMPE $TMPO $libs $extralibs
+    check_cmd $ld $LDFLAGS $flags $(ld_o $TMPE) $TMPO $libs $extralibs
 }
 
 check_code(){
@@ -898,11 +917,15 @@ require_pkg_config(){
     add_extralibs $(get_safe ${pkg}_libs)
 }
 
+hostcc_o(){
+    eval printf '%s\\n' $HOSTCC_O
+}
+
 check_host_cc(){
     log check_host_cc "$@"
     cat > $TMPC
     log_file $TMPC
-    check_cmd $host_cc $host_cflags "$@" -c -o $TMPO $TMPC
+    check_cmd $host_cc $host_cflags "$@" $HOSTCC_C $(hostcc_o $TMPO) $TMPC
 }
 
 check_host_cflags(){
@@ -1048,26 +1071,34 @@ ARCH_LIST='
     x86_64
 '
 
-ARCH_EXT_LIST='
-    altivec
+ARCH_EXT_LIST_X86='
     amd3dnow
     amd3dnowext
+    avx
+    fma4
+    mmx
+    mmxext
+    sse
+    sse2
+    sse3
+    sse4
+    sse42
+    ssse3
+'
+
+ARCH_EXT_LIST="
+    $ARCH_EXT_LIST_X86
+    altivec
     armv5te
     armv6
     armv6t2
     armvfp
-    avx
-    fma4
     mmi
-    mmx
-    mmxext
     neon
     ppc4xx
-    sse
-    ssse3
     vfpv3
     vis
-'
+"
 
 HAVE_LIST_PUB='
     bigendian
@@ -1076,6 +1107,8 @@ HAVE_LIST_PUB='
 
 HAVE_LIST="
     $ARCH_EXT_LIST
+    $(add_suffix _external $ARCH_EXT_LIST)
+    $(add_suffix _inline   $ARCH_EXT_LIST)
     $HAVE_LIST_PUB
     $THREADS_LIST
     aligned_malloc
@@ -1270,6 +1303,7 @@ CMDLINE_SET="
     extra_version
     host_cc
     host_cflags
+    host_ld
     host_ldflags
     host_libs
     host_os
@@ -1311,14 +1345,30 @@ ppc4xx_deps="ppc"
 vis_deps="sparc"
 
 x86_64_suggest="cmov fast_cmov"
+
 amd3dnow_deps="mmx"
 amd3dnowext_deps="amd3dnow"
 mmx_deps="x86"
 mmxext_deps="mmx"
-sse_deps="mmx"
-ssse3_deps="sse"
-avx_deps="ssse3"
+sse_deps="mmxext"
+sse2_deps="sse"
+sse3_deps="sse2"
+ssse3_deps="sse3"
+sse4_deps="ssse3"
+sse42_deps="sse4"
+avx_deps="sse42"
 fma4_deps="avx"
+
+mmx_external_deps="yasm"
+mmx_inline_deps="inline_asm"
+mmx_suggest="mmx_external mmx_inline"
+
+for ext in $(filter_out mmx $ARCH_EXT_LIST_X86); do
+    eval dep=\$${ext}_deps
+    eval ${ext}_external_deps='"${dep}_external"'
+    eval ${ext}_inline_deps='"${dep}_inline"'
+    eval ${ext}_suggest='"${ext}_external ${ext}_inline"'
+done
 
 aligned_stack_if_any="ppc x86"
 fast_64bit_if_any="alpha ia64 mips64 parisc64 ppc64 sparc64 x86_64"
@@ -1364,6 +1414,7 @@ eatgq_decoder_select="aandcttables"
 eatqi_decoder_select="aandcttables error_resilience mpegvideo"
 ffv1_decoder_select="golomb rangecoder"
 ffv1_encoder_select="rangecoder"
+ffvhuff_encoder_select="huffman"
 flac_decoder_select="golomb"
 flac_encoder_select="golomb lpc"
 flashsv_decoder_select="zlib"
@@ -1385,6 +1436,7 @@ h264_dxva2_hwaccel_select="dxva2 h264_decoder"
 h264_vaapi_hwaccel_select="vaapi h264_decoder"
 h264_vda_hwaccel_select="vda h264_decoder"
 h264_vdpau_decoder_select="vdpau h264_decoder"
+huffyuv_encoder_select="huffman"
 iac_decoder_select="fft mdct sinewin"
 imc_decoder_select="fft mdct sinewin"
 jpegls_decoder_select="golomb"
@@ -1427,6 +1479,7 @@ msmpeg4v2_decoder_select="h263_decoder"
 msmpeg4v2_encoder_select="h263_encoder"
 msmpeg4v3_decoder_select="h263_decoder"
 msmpeg4v3_encoder_select="h263_encoder"
+mss2_decoder_select="vc1_decoder"
 nellymoser_decoder_select="mdct sinewin"
 nellymoser_encoder_select="mdct sinewin"
 png_decoder_select="zlib"
@@ -1769,8 +1822,11 @@ CC_C='-c'
 CC_E='-E -o $@'
 CC_O='-o $@'
 LD_O='-o $@'
+LD_LIB='-l%'
+LD_PATH='-L'
 HOSTCC_C='-c'
 HOSTCC_O='-o $@'
+HOSTLD_O='-o $@'
 
 host_cflags='-D_ISOC99_SOURCE -D_XOPEN_SOURCE=600 -O3 -g'
 host_libs='-lm'
@@ -2115,7 +2171,8 @@ probe_cc(){
     pfx=$1
     _cc=$2
 
-    unset _type _ident _cc_c _cc_e _cc_o _flags _cflags _ldflags
+    unset _type _ident _cc_c _cc_e _cc_o _flags _cflags
+    unset _ld_o _ldflags _ld_lib _ld_path
     unset _depflags _DEPCMD _DEPFLAGS
     _flags_filter=echo
 
@@ -2255,9 +2312,7 @@ set_ccvars CC
 
 probe_cc hostcc "$host_cc"
 host_cflags_filter=$_flags_filter
-host_ldflags_filter=$_flags_filter
 add_host_cflags  $_flags $_cflags
-add_host_ldflags $_flags $_ldflags
 set_ccvars HOSTCC
 
 test -n "$cc_type" && enable $cc_type ||
@@ -2266,7 +2321,8 @@ test -n "$cc_type" && enable $cc_type ||
 : ${as_default:=$cc}
 : ${dep_cc_default:=$cc}
 : ${ld_default:=$cc}
-set_default ar as dep_cc ld
+: ${host_ld_default:=$host_cc}
+set_default ar as dep_cc ld host_ld
 
 probe_cc as "$as"
 asflags_filter=$_flags_filter
@@ -2277,7 +2333,14 @@ probe_cc ld "$ld"
 ldflags_filter=$_flags_filter
 add_ldflags $_flags $_ldflags
 test "$cc_type" != "$ld_type" && add_ldflags $cc_ldflags
-LD_O=${_cc_o-$LD_O}
+LD_O=${_ld_o-$LD_O}
+LD_LIB=${_ld_lib-$LD_LIB}
+LD_PATH=${_ld_path-$LD_PATH}
+
+probe_cc hostld "$host_ld"
+host_ldflags_filter=$_flags_filter
+add_host_ldflags $_flags $_ldflags
+HOSTLD_O=${_ld_o-$HOSTLD_O}
 
 if [ -z "$CC_DEPFLAGS" ] && [ "$dep_cc" != "$cc" ]; then
     probe_cc depcc "$dep_cc"
@@ -2581,7 +2644,7 @@ case $target_os in
         oss_indev_extralibs="-lossaudio"
         oss_outdev_extralibs="-lossaudio"
         ;;
-    openbsd)
+    openbsd|bitrig)
         # On OpenBSD 4.5. the compiler does not use PIC unless
         # explicitly using -fPIC. Libav builds fine without PIC,
         # however the generated executable will not do anything
@@ -2590,6 +2653,8 @@ case $target_os in
         enable pic
         disable symver
         SHFLAGS='-shared'
+        SLIBNAME_WITH_MAJOR='$(SLIBNAME).$(LIBVERSION)'
+        SLIB_INSTALL_LINKS=
         oss_indev_extralibs="-lossaudio"
         oss_outdev_extralibs="-lossaudio"
         ;;
@@ -2919,8 +2984,8 @@ EOF
     check_inline_asm xmm_clobbers '"":::"%xmm0"'
 
     # check whether binutils is new enough to compile SSSE3/MMXEXT
-    enabled ssse3  && check_inline_asm ssse3  '"pabsw %xmm0, %xmm0"'
-    enabled mmxext && check_inline_asm mmxext '"pmaxub %mm0, %mm1"'
+    enabled ssse3  && check_inline_asm ssse3_inline  '"pabsw %xmm0, %xmm0"'
+    enabled mmxext && check_inline_asm mmxext_inline '"pmaxub %mm0, %mm1"'
 
     if ! disabled_any asm mmx yasm; then
         if check_cmd $yasmexe --version; then
@@ -2941,8 +3006,8 @@ EOF
 
         check_yasm "pextrd [eax], xmm0, 1" && enable yasm ||
             die "yasm not found, use --disable-yasm for a crippled build"
-        check_yasm "vextractf128 xmm0, ymm0, 0" || disable avx
-        check_yasm "vfmaddps ymm0, ymm1, ymm2, ymm3" || disable fma4
+        check_yasm "vextractf128 xmm0, ymm0, 0"      || disable avx_external
+        check_yasm "vfmaddps ymm0, ymm1, ymm2, ymm3" || disable fma4_external
         check_yasm "CPU amdnop" && enable cpunop
     fi
 
@@ -3339,13 +3404,13 @@ fi
 
 enabled_any $THREADS_LIST      && enable threads
 
+enabled asm || { arch=c; disable $ARCH_LIST $ARCH_EXT_LIST; }
+
 check_deps $CONFIG_LIST       \
            $CONFIG_EXTRA      \
            $HAVE_LIST         \
            $ALL_COMPONENTS    \
            $ALL_TESTS         \
-
-enabled asm || { arch=c; disable $ARCH_LIST $ARCH_EXT_LIST; }
 
 ! enabled_any memalign posix_memalign aligned_malloc &&
     enabled_any $need_memalign && enable memalign_hack
@@ -3500,6 +3565,8 @@ AS_O=$AS_O
 CC_C=$CC_C
 CC_O=$CC_O
 LD_O=$LD_O
+LD_LIB=$LD_LIB
+LD_PATH=$LD_PATH
 DLLTOOL=$dlltool
 LDFLAGS=$LDFLAGS
 LDFLAGS-avserver=$AVSERVERLDFLAGS
@@ -3521,6 +3588,7 @@ ASDEP_FLAGS=$ASDEP_FLAGS
 CC_DEPFLAGS=$CC_DEPFLAGS
 AS_DEPFLAGS=$AS_DEPFLAGS
 HOSTCC=$host_cc
+HOSTLD=$host_ld
 HOSTCFLAGS=$host_cflags
 HOSTEXESUF=$HOSTEXESUF
 HOSTLDFLAGS=$host_ldflags
@@ -3532,10 +3600,12 @@ HOSTCCDEP_FLAGS=$HOSTCCDEP_FLAGS
 HOSTCC_DEPFLAGS=$HOSTCC_DEPFLAGS
 HOSTCC_C=$HOSTCC_C
 HOSTCC_O=$HOSTCC_O
+HOSTLD_O=$HOSTLD_O
 TARGET_EXEC=$target_exec
 TARGET_PATH=$target_path
 LIBS-avplay=$sdl_libs
 CFLAGS-avplay=$sdl_cflags
+ZLIB=$($ldflags_filter -lz)
 LIB_INSTALL_EXTRA_CMD=$LIB_INSTALL_EXTRA_CMD
 EXTRALIBS=$extralibs
 INSTALL=install

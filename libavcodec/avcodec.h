@@ -88,6 +88,9 @@
  * If you add a codec ID to this list, add it so that
  * 1. no value of a existing codec ID changes (that would break ABI),
  * 2. it is as close as possible to similar codecs.
+ *
+ * After adding new codec IDs, do not forget to add an entry to the codec
+ * descriptor list and bump libavcodec minor version.
  */
 enum AVCodecID {
     AV_CODEC_ID_NONE,
@@ -261,6 +264,7 @@ enum AVCodecID {
     AV_CODEC_ID_TSCC2,
     AV_CODEC_ID_MTS2,
     AV_CODEC_ID_CLLC,
+    AV_CODEC_ID_MSS2,
 
     /* various PCM "codecs" */
     AV_CODEC_ID_FIRST_AUDIO = 0x10000,     ///< A dummy id pointing at the start of audio codecs
@@ -464,6 +468,16 @@ typedef struct AVCodecDescriptor {
  * Video codecs only.
  */
 #define AV_CODEC_PROP_INTRA_ONLY    (1 << 0)
+/**
+ * Codec supports lossy compression. Audio and video codecs only.
+ * @note a codec may support both lossy and lossless
+ * compression modes
+ */
+#define AV_CODEC_PROP_LOSSY         (1 << 1)
+/**
+ * Codec supports lossless compression. Audio and video codecs only.
+ */
+#define AV_CODEC_PROP_LOSSLESS      (1 << 2)
 
 #if FF_API_OLD_DECODE_AUDIO
 /* in bytes */

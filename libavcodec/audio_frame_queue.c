@@ -51,6 +51,22 @@ void ff_af_queue_close(AudioFrameQueue *afq)
     memset(afq, 0, sizeof(*afq));
 }
 
+#ifdef DEBUG
+static void af_queue_log_state(AudioFrameQueue *afq)
+{
+    AudioFrame *f;
+    av_dlog(afq->avctx, "remaining delay   = %d\n", afq->remaining_delay);
+    av_dlog(afq->avctx, "remaining samples = %d\n", afq->remaining_samples);
+    av_dlog(afq->avctx, "frames:\n");
+    f = afq->frame_queue;
+    while (f) {
+        av_dlog(afq->avctx, "  [ pts=%9"PRId64" duration=%d ]\n",
+                f->pts, f->duration);
+        f = f->next;
+    }
+}
+#endif /* DEBUG */
+
 int ff_af_queue_add(AudioFrameQueue *afq, const AVFrame *f)
 {
     AudioFrame *new_frame;
@@ -87,7 +103,7 @@ int ff_af_queue_add(AudioFrameQueue *afq, const AVFrame *f)
     afq->remaining_samples += f->nb_samples;
 
 #ifdef DEBUG
-    ff_af_queue_log_state(afq);
+    af_queue_log_state(afq);
 #endif
 
     return 0;
@@ -100,7 +116,7 @@ void ff_af_queue_remove(AudioFrameQueue *afq, int nb_samples, int64_t *pts,
     int removed_samples = 0;
 
 #ifdef DEBUG
-    ff_af_queue_log_state(afq);
+    af_queue_log_state(afq);
 #endif
 
     /* get output pts from the next frame or generated pts */
@@ -144,20 +160,4 @@ void ff_af_queue_remove(AudioFrameQueue *afq, int nb_samples, int64_t *pts,
         av_log(afq->avctx, AV_LOG_WARNING, "frame_size is too large\n");
     if (duration)
         *duration = ff_samples_to_time_base(afq->avctx, removed_samples);
-}
-
-void ff_af_queue_log_state(AudioFrameQueue *afq)
-{
-    AudioFrame *f;
-    av_log(afq->avctx, AV_LOG_DEBUG, "remaining delay   = %d\n",
-           afq->remaining_delay);
-    av_log(afq->avctx, AV_LOG_DEBUG, "remaining samples = %d\n",
-           afq->remaining_samples);
-    av_log(afq->avctx, AV_LOG_DEBUG, "frames:\n");
-    f = afq->frame_queue;
-    while (f) {
-        av_log(afq->avctx, AV_LOG_DEBUG, "  [ pts=%9"PRId64" duration=%d ]\n",
-               f->pts, f->duration);
-        f = f->next;
-    }
 }

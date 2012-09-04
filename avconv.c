@@ -183,6 +183,7 @@ void exit_program(int ret)
 
         av_freep(&output_streams[i]->forced_keyframes);
         av_freep(&output_streams[i]->avfilter);
+        av_freep(&output_streams[i]->logfile_prefix);
         av_freep(&output_streams[i]->filtered_frame);
         av_freep(&output_streams[i]);
     }
@@ -1682,7 +1683,11 @@ static int transcode_init(void)
                 (video_sync_method ==  VSYNC_CFR ||
                  (video_sync_method ==  VSYNC_AUTO &&
                   !(oc->oformat->flags & (AVFMT_NOTIMESTAMPS | AVFMT_VARIABLE_FPS))))) {
-                ost->frame_rate = ist->st->avg_frame_rate.num ? ist->st->avg_frame_rate : (AVRational){25, 1};
+                ost->frame_rate = ist->framerate.num ? ist->framerate :
+                                  ist->st->avg_frame_rate.num ?
+                                  ist->st->avg_frame_rate :
+                                  (AVRational){25, 1};
+
                 if (ost->enc && ost->enc->supported_framerates && !ost->force_fps) {
                     int idx = av_find_nearest_q_idx(ost->frame_rate, ost->enc->supported_framerates);
                     ost->frame_rate = ost->enc->supported_framerates[idx];
@@ -1743,7 +1748,8 @@ static int transcode_init(void)
                 FILE *f;
 
                 snprintf(logfilename, sizeof(logfilename), "%s-%d.log",
-                         pass_logfilename_prefix ? pass_logfilename_prefix : DEFAULT_PASS_LOGFILENAME_PREFIX,
+                         ost->logfile_prefix ? ost->logfile_prefix :
+                                               DEFAULT_PASS_LOGFILENAME_PREFIX,
                          i);
                 if (!strcmp(ost->enc->name, "libx264")) {
                     av_dict_set(&ost->opts, "stats", logfilename, AV_DICT_DONT_OVERWRITE);
@@ -2392,7 +2398,7 @@ static void parse_cpuflags(int argc, char **argv, const OptionDef *options)
 {
     int idx = locate_option(argc, argv, options, "cpuflags");
     if (idx && argv[idx + 1])
-        opt_cpuflags("cpuflags", argv[idx + 1]);
+        opt_cpuflags(NULL, "cpuflags", argv[idx + 1]);
 }
 
 int main(int argc, char **argv)

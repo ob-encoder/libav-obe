@@ -30,6 +30,7 @@
 #include "libavutil/mem.h"
 #include "dsputil_mmx.h"
 
+#if HAVE_YASM
 void ff_put_rv40_chroma_mc8_mmx  (uint8_t *dst, uint8_t *src,
                                   int stride, int h, int x, int y);
 void ff_avg_rv40_chroma_mc8_mmx2 (uint8_t *dst, uint8_t *src,
@@ -183,6 +184,8 @@ QPEL_FUNCS_SET (OP, 3, 1, OPT) \
 QPEL_FUNCS_SET (OP, 3, 2, OPT)
 /** @} */
 
+#endif /* HAVE_YASM */
+
 void ff_rv40dsp_init_x86(RV34DSPContext *c, DSPContext *dsp)
 {
 #if HAVE_YASM
@@ -234,5 +237,5 @@ void ff_rv40dsp_init_x86(RV34DSPContext *c, DSPContext *dsp)
         QPEL_MC_SET(put_, _ssse3)
         QPEL_MC_SET(avg_, _ssse3)
     }
-#endif
+#endif /* HAVE_YASM */
 }
