@@ -1804,8 +1804,6 @@ static int mxf_write_footer(AVFormatContext *s)
         }
     }
 
-    avio_flush(pb);
-
     ff_audio_interleave_close(s);
 
     av_freep(&mxf->index_entries);
@@ -1858,7 +1856,7 @@ static int mxf_interleave_get_packet(AVFormatContext *s, AVPacket *out, AVPacket
         }
 
         *out = pktl->pkt;
-        //av_log(s, AV_LOG_DEBUG, "out st:%d dts:%lld\n", (*out).stream_index, (*out).dts);
+        av_dlog(s, "out st:%d dts:%lld\n", (*out).stream_index, (*out).dts);
         s->packet_buffer = pktl->next;
         if(s->streams[pktl->pkt.stream_index]->last_in_packet_buffer == pktl)
             s->streams[pktl->pkt.stream_index]->last_in_packet_buffer= NULL;

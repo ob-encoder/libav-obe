@@ -216,7 +216,7 @@ static int read_packet(AVFormatContext *s1, AVPacket *pkt)
     char filename[1024];
     int i;
     int size[3]={0}, ret[3]={0};
-    AVIOContext *f[3];
+    AVIOContext *f[3] = {NULL};
     AVCodecContext *codec= s1->streams[0]->codec;
 
     if (!s->is_pipe) {
@@ -232,7 +232,7 @@ static int read_packet(AVFormatContext *s1, AVPacket *pkt)
         for(i=0; i<3; i++){
             if (avio_open2(&f[i], filename, AVIO_FLAG_READ,
                            &s1->interrupt_callback, NULL) < 0) {
-                if(i==1)
+                if(i>=1)
                     break;
                 av_log(s1, AV_LOG_ERROR, "Could not open file : %s\n",filename);
                 return AVERROR(EIO);
@@ -259,7 +259,7 @@ static int read_packet(AVFormatContext *s1, AVPacket *pkt)
 
     pkt->size= 0;
     for(i=0; i<3; i++){
-        if(size[i]){
+        if(f[i]){
             ret[i]= avio_read(f[i], pkt->data + pkt->size, size[i]);
             if (!s->is_pipe)
                 avio_close(f[i]);
@@ -284,8 +284,8 @@ static const AVOption options[] = {
     { "pixel_format", "", OFFSET(pixel_format), AV_OPT_TYPE_STRING, {.str = NULL}, 0, 0, DEC },
     { "video_size",   "", OFFSET(video_size),   AV_OPT_TYPE_STRING, {.str = NULL}, 0, 0, DEC },
     { "framerate",    "", OFFSET(framerate),    AV_OPT_TYPE_STRING, {.str = "25"}, 0, 0, DEC },
-    { "loop",         "", OFFSET(loop),         AV_OPT_TYPE_INT,    {.dbl = 0},    0, 1, DEC },
-    { "start_number", "first number in the sequence", OFFSET(start_number), AV_OPT_TYPE_INT, {.dbl = 1}, 1, INT_MAX, DEC },
+    { "loop",         "", OFFSET(loop),         AV_OPT_TYPE_INT,    {.i64 = 0},    0, 1, DEC },
+    { "start_number", "first number in the sequence", OFFSET(start_number), AV_OPT_TYPE_INT, {.i64 = 1}, 1, INT_MAX, DEC },
     { NULL },
 };
 

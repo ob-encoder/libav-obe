@@ -28,7 +28,6 @@
 #include "libavcodec/h264dsp.h"
 #include "libavcodec/mpegvideo.h"
 #include "libavcodec/simple_idct.h"
-#include "libavcodec/ac3dec.h"
 #include "dsputil_mmx.h"
 #include "idct_xvid.h"
 
@@ -170,7 +169,7 @@ DECLARE_ALIGNED(16, const double, ff_pd_2)[2] = { 2.0, 2.0 };
 #define PAVGB(a, b, c, e)               PAVGB_MMX_NO_RND(a, b, c, e)
 #define OP_AVG(a, b, c, e)              PAVGB_MMX(a, b, c, e)
 
-#include "dsputil_mmx_rnd_template.c"
+#include "dsputil_rnd_template.c"
 
 #undef DEF
 #undef SET_RND
@@ -184,7 +183,7 @@ DECLARE_ALIGNED(16, const double, ff_pd_2)[2] = { 2.0, 2.0 };
 #define PAVGBP(a, b, c, d, e, f)        PAVGBP_MMX(a, b, c, d, e, f)
 #define PAVGB(a, b, c, e)               PAVGB_MMX(a, b, c, e)
 
-#include "dsputil_mmx_rnd_template.c"
+#include "dsputil_rnd_template.c"
 
 #undef DEF
 #undef SET_RND
@@ -199,7 +198,7 @@ DECLARE_ALIGNED(16, const double, ff_pd_2)[2] = { 2.0, 2.0 };
 #define PAVGB "pavgusb"
 #define OP_AVG PAVGB
 
-#include "dsputil_mmx_avg_template.c"
+#include "dsputil_avg_template.c"
 
 #undef DEF
 #undef PAVGB
@@ -214,7 +213,7 @@ DECLARE_ALIGNED(16, const double, ff_pd_2)[2] = { 2.0, 2.0 };
 #define PAVGB "pavgb"
 #define OP_AVG PAVGB
 
-#include "dsputil_mmx_avg_template.c"
+#include "dsputil_avg_template.c"
 
 #undef DEF
 #undef PAVGB
@@ -2162,33 +2161,6 @@ void ff_avg_vc1_mspel_mc00_mmx2(uint8_t *dst, const uint8_t *src,
     avg_pixels8_mmx2(dst, src, stride, 8);
 }
 
-/* XXX: Those functions should be suppressed ASAP when all IDCTs are
- * converted. */
-
-static void ff_idct_xvid_mmx_put(uint8_t *dest, int line_size, DCTELEM *block)
-{
-    ff_idct_xvid_mmx(block);
-    ff_put_pixels_clamped_mmx(block, dest, line_size);
-}
-
-static void ff_idct_xvid_mmx_add(uint8_t *dest, int line_size, DCTELEM *block)
-{
-    ff_idct_xvid_mmx(block);
-    ff_add_pixels_clamped_mmx(block, dest, line_size);
-}
-
-static void ff_idct_xvid_mmx2_put(uint8_t *dest, int line_size, DCTELEM *block)
-{
-    ff_idct_xvid_mmx2(block);
-    ff_put_pixels_clamped_mmx(block, dest, line_size);
-}
-
-static void ff_idct_xvid_mmx2_add(uint8_t *dest, int line_size, DCTELEM *block)
-{
-    ff_idct_xvid_mmx2(block);
-    ff_add_pixels_clamped_mmx(block, dest, line_size);
-}
-
 static void vorbis_inverse_coupling_3dnow(float *mag, float *ang, int blocksize)
 {
     int i;
@@ -2245,115 +2217,6 @@ static void vorbis_inverse_coupling_sse(float *mag, float *ang, int blocksize)
             : "+m"(mag[i]), "+m"(ang[i])
             :: "memory"
         );
-    }
-}
-
-#define IF1(x) x
-#define IF0(x)
-
-#define MIX5(mono, stereo)                                      \
-    __asm__ volatile (                                          \
-        "movss           0(%2), %%xmm5          \n"             \
-        "movss           8(%2), %%xmm6          \n"             \
-        "movss          24(%2), %%xmm7          \n"             \
-        "shufps     $0, %%xmm5, %%xmm5          \n"             \
-        "shufps     $0, %%xmm6, %%xmm6          \n"             \
-        "shufps     $0, %%xmm7, %%xmm7          \n"             \
-        "1:                                     \n"             \
-        "movaps       (%0, %1), %%xmm0          \n"             \
-        "movaps  0x400(%0, %1), %%xmm1          \n"             \
-        "movaps  0x800(%0, %1), %%xmm2          \n"             \
-        "movaps  0xc00(%0, %1), %%xmm3          \n"             \
-        "movaps 0x1000(%0, %1), %%xmm4          \n"             \
-        "mulps          %%xmm5, %%xmm0          \n"             \
-        "mulps          %%xmm6, %%xmm1          \n"             \
-        "mulps          %%xmm5, %%xmm2          \n"             \
-        "mulps          %%xmm7, %%xmm3          \n"             \
-        "mulps          %%xmm7, %%xmm4          \n"             \
- stereo("addps          %%xmm1, %%xmm0          \n")            \
-        "addps          %%xmm1, %%xmm2          \n"             \
-        "addps          %%xmm3, %%xmm0          \n"             \
-        "addps          %%xmm4, %%xmm2          \n"             \
-   mono("addps          %%xmm2, %%xmm0          \n")            \
-        "movaps         %%xmm0, (%0, %1)        \n"             \
- stereo("movaps         %%xmm2, 0x400(%0, %1)   \n")            \
-        "add               $16, %0              \n"             \
-        "jl                 1b                  \n"             \
-        : "+&r"(i)                                              \
-        : "r"(samples[0] + len), "r"(matrix)                    \
-        : XMM_CLOBBERS("%xmm0", "%xmm1", "%xmm2", "%xmm3",      \
-                      "%xmm4", "%xmm5", "%xmm6", "%xmm7",)      \
-         "memory"                                               \
-    );
-
-#define MIX_MISC(stereo)                                        \
-    __asm__ volatile (                                          \
-        "1:                                 \n"                 \
-        "movaps     (%3, %0), %%xmm0        \n"                 \
- stereo("movaps       %%xmm0, %%xmm1        \n")                \
-        "mulps        %%xmm4, %%xmm0        \n"                 \
- stereo("mulps        %%xmm5, %%xmm1        \n")                \
-        "lea    1024(%3, %0), %1            \n"                 \
-        "mov              %5, %2            \n"                 \
-        "2:                                 \n"                 \
-        "movaps         (%1), %%xmm2        \n"                 \
- stereo("movaps       %%xmm2, %%xmm3        \n")                \
-        "mulps      (%4, %2), %%xmm2        \n"                 \
- stereo("mulps    16(%4, %2), %%xmm3        \n")                \
-        "addps        %%xmm2, %%xmm0        \n"                 \
- stereo("addps        %%xmm3, %%xmm1        \n")                \
-        "add           $1024, %1            \n"                 \
-        "add             $32, %2            \n"                 \
-        "jl               2b                \n"                 \
-        "movaps       %%xmm0,     (%3, %0)  \n"                 \
- stereo("movaps       %%xmm1, 1024(%3, %0)  \n")                \
-        "add             $16, %0            \n"                 \
-        "jl               1b                \n"                 \
-        : "+&r"(i), "=&r"(j), "=&r"(k)                          \
-        : "r"(samples[0] + len), "r"(matrix_simd + in_ch),      \
-          "g"((intptr_t) - 32 * (in_ch - 1))                    \
-        : "memory"                                              \
-    );
-
-static void ac3_downmix_sse(float (*samples)[256], float (*matrix)[2],
-                            int out_ch, int in_ch, int len)
-{
-    int (*matrix_cmp)[2] = (int(*)[2])matrix;
-    intptr_t i, j, k;
-
-    i = -len * sizeof(float);
-    if (in_ch == 5 && out_ch == 2 &&
-        !(matrix_cmp[0][1] | matrix_cmp[2][0]   |
-          matrix_cmp[3][1] | matrix_cmp[4][0]   |
-          (matrix_cmp[1][0] ^ matrix_cmp[1][1]) |
-          (matrix_cmp[0][0] ^ matrix_cmp[2][1]))) {
-        MIX5(IF0, IF1);
-    } else if (in_ch == 5 && out_ch == 1 &&
-               matrix_cmp[0][0] == matrix_cmp[2][0] &&
-               matrix_cmp[3][0] == matrix_cmp[4][0]) {
-        MIX5(IF1, IF0);
-    } else {
-        DECLARE_ALIGNED(16, float, matrix_simd)[AC3_MAX_CHANNELS][2][4];
-        j = 2 * in_ch * sizeof(float);
-        __asm__ volatile (
-            "1:                                 \n"
-            "sub             $8, %0             \n"
-            "movss     (%2, %0), %%xmm4         \n"
-            "movss    4(%2, %0), %%xmm5         \n"
-            "shufps          $0, %%xmm4, %%xmm4 \n"
-            "shufps          $0, %%xmm5, %%xmm5 \n"
-            "movaps      %%xmm4,   (%1, %0, 4)  \n"
-            "movaps      %%xmm5, 16(%1, %0, 4)  \n"
-            "jg              1b                 \n"
-            : "+&r"(j)
-            : "r"(matrix_simd), "r"(matrix)
-            : "memory"
-        );
-        if (out_ch == 2) {
-            MIX_MISC(IF1);
-        } else {
-            MIX_MISC(IF0);
-        }
     }
 }
 
@@ -2589,6 +2452,21 @@ static void dsputil_init_mmx(DSPContext *c, AVCodecContext *avctx, int mm_flags)
         SET_HPEL_FUNCS(put_no_rnd, 1,  8, mmx);
         SET_HPEL_FUNCS(avg,        1,  8, mmx);
         SET_HPEL_FUNCS(avg_no_rnd, 1,  8, mmx);
+
+        switch (avctx->idct_algo) {
+        case FF_IDCT_AUTO:
+        case FF_IDCT_SIMPLEMMX:
+            c->idct_put              = ff_simple_idct_put_mmx;
+            c->idct_add              = ff_simple_idct_add_mmx;
+            c->idct                  = ff_simple_idct_mmx;
+            c->idct_permutation_type = FF_SIMPLE_IDCT_PERM;
+            break;
+        case FF_IDCT_XVIDMMX:
+            c->idct_put              = ff_idct_xvid_mmx_put;
+            c->idct_add              = ff_idct_xvid_mmx_add;
+            c->idct                  = ff_idct_xvid_mmx;
+            break;
+        }
     }
 
 #if ARCH_X86_32 || !HAVE_YASM
@@ -2656,6 +2534,12 @@ static void dsputil_init_mmx2(DSPContext *c, AVCodecContext *avctx,
         }
     }
 
+    if (!high_bit_depth && avctx->idct_algo == FF_IDCT_XVIDMMX) {
+        c->idct_put = ff_idct_xvid_mmx2_put;
+        c->idct_add = ff_idct_xvid_mmx2_add;
+        c->idct     = ff_idct_xvid_mmx2;
+    }
+
     if (CONFIG_VP3_DECODER && (avctx->codec_id == AV_CODEC_ID_VP3 ||
                                avctx->codec_id == AV_CODEC_ID_THEORA)) {
         c->put_no_rnd_pixels_tab[1][1] = put_no_rnd_pixels8_x2_exact_mmx2;
@@ -2717,7 +2601,9 @@ static void dsputil_init_mmx2(DSPContext *c, AVCodecContext *avctx,
         c->avg_h264_chroma_pixels_tab[1] = ff_avg_h264_chroma_mc4_10_mmx2;
     }
 
-    c->add_hfyu_median_prediction   = ff_add_hfyu_median_prediction_mmx2;
+    /* slower than cmov version on AMD */
+    if (!(mm_flags & AV_CPU_FLAG_3DNOW))
+        c->add_hfyu_median_prediction = ff_add_hfyu_median_prediction_mmx2;
 
     c->scalarproduct_int16          = ff_scalarproduct_int16_mmx2;
     c->scalarproduct_and_madd_int16 = ff_scalarproduct_and_madd_int16_mmx2;
@@ -2794,11 +2680,6 @@ static void dsputil_init_3dnow(DSPContext *c, AVCodecContext *avctx,
     }
 
     c->vorbis_inverse_coupling = vorbis_inverse_coupling_3dnow;
-
-#if HAVE_7REGS
-    if (mm_flags & AV_CPU_FLAG_CMOV)
-        c->add_hfyu_median_prediction = add_hfyu_median_prediction_cmov;
-#endif
 #endif /* HAVE_INLINE_ASM */
 
 #if HAVE_YASM
@@ -2831,7 +2712,6 @@ static void dsputil_init_sse(DSPContext *c, AVCodecContext *avctx, int mm_flags)
     }
 
     c->vorbis_inverse_coupling = vorbis_inverse_coupling_sse;
-    c->ac3_downmix             = ac3_downmix_sse;
 
 #if HAVE_6REGS
     c->vector_fmul_window = vector_fmul_window_sse;
@@ -2887,6 +2767,13 @@ static void dsputil_init_sse2(DSPContext *c, AVCodecContext *avctx,
         H264_QPEL_FUNCS(3, 1, sse2);
         H264_QPEL_FUNCS(3, 2, sse2);
         H264_QPEL_FUNCS(3, 3, sse2);
+    }
+
+    if (!high_bit_depth && avctx->idct_algo == FF_IDCT_XVIDMMX) {
+        c->idct_put              = ff_idct_xvid_sse2_put;
+        c->idct_add              = ff_idct_xvid_sse2_add;
+        c->idct                  = ff_idct_xvid_sse2;
+        c->idct_permutation_type = FF_SSE2_IDCT_PERM;
     }
 #endif /* HAVE_INLINE_ASM */
 
@@ -3009,50 +2896,24 @@ void ff_dsputil_init_mmx(DSPContext *c, AVCodecContext *avctx)
 {
     int mm_flags = av_get_cpu_flags();
 
-    if (mm_flags & AV_CPU_FLAG_MMX) {
-#if HAVE_INLINE_ASM
-        const int idct_algo = avctx->idct_algo;
+#if HAVE_7REGS && HAVE_INLINE_ASM
+    if (mm_flags & AV_CPU_FLAG_CMOV)
+        c->add_hfyu_median_prediction = add_hfyu_median_prediction_cmov;
+#endif
 
-        if (avctx->bits_per_raw_sample <= 8) {
-            if (idct_algo == FF_IDCT_AUTO || idct_algo == FF_IDCT_SIMPLEMMX) {
-                c->idct_put              = ff_simple_idct_put_mmx;
-                c->idct_add              = ff_simple_idct_add_mmx;
-                c->idct                  = ff_simple_idct_mmx;
-                c->idct_permutation_type = FF_SIMPLE_IDCT_PERM;
-            } else if (idct_algo == FF_IDCT_CAVS) {
-                    c->idct_permutation_type = FF_TRANSPOSE_IDCT_PERM;
-            } else if (idct_algo == FF_IDCT_XVIDMMX) {
-                if (mm_flags & AV_CPU_FLAG_SSE2) {
-                    c->idct_put              = ff_idct_xvid_sse2_put;
-                    c->idct_add              = ff_idct_xvid_sse2_add;
-                    c->idct                  = ff_idct_xvid_sse2;
-                    c->idct_permutation_type = FF_SSE2_IDCT_PERM;
-                } else if (mm_flags & AV_CPU_FLAG_MMXEXT) {
-                    c->idct_put              = ff_idct_xvid_mmx2_put;
-                    c->idct_add              = ff_idct_xvid_mmx2_add;
-                    c->idct                  = ff_idct_xvid_mmx2;
-                } else {
-                    c->idct_put              = ff_idct_xvid_mmx_put;
-                    c->idct_add              = ff_idct_xvid_mmx_add;
-                    c->idct                  = ff_idct_xvid_mmx;
-                }
-            }
-        }
-#endif /* HAVE_INLINE_ASM */
-
+    if (mm_flags & AV_CPU_FLAG_MMX)
         dsputil_init_mmx(c, avctx, mm_flags);
-    }
 
     if (mm_flags & AV_CPU_FLAG_MMXEXT)
         dsputil_init_mmx2(c, avctx, mm_flags);
 
-    if (mm_flags & AV_CPU_FLAG_3DNOW && HAVE_AMD3DNOW)
+    if (mm_flags & AV_CPU_FLAG_3DNOW)
         dsputil_init_3dnow(c, avctx, mm_flags);
 
-    if (mm_flags & AV_CPU_FLAG_3DNOWEXT && HAVE_AMD3DNOWEXT)
+    if (mm_flags & AV_CPU_FLAG_3DNOWEXT)
         dsputil_init_3dnowext(c, avctx, mm_flags);
 
-    if (mm_flags & AV_CPU_FLAG_SSE && HAVE_SSE)
+    if (mm_flags & AV_CPU_FLAG_SSE)
         dsputil_init_sse(c, avctx, mm_flags);
 
     if (mm_flags & AV_CPU_FLAG_SSE2)
@@ -3061,7 +2922,7 @@ void ff_dsputil_init_mmx(DSPContext *c, AVCodecContext *avctx)
     if (mm_flags & AV_CPU_FLAG_SSSE3)
         dsputil_init_ssse3(c, avctx, mm_flags);
 
-    if (mm_flags & AV_CPU_FLAG_SSE4 && HAVE_SSE)
+    if (mm_flags & AV_CPU_FLAG_SSE4)
         dsputil_init_sse4(c, avctx, mm_flags);
 
     if (mm_flags & AV_CPU_FLAG_AVX)

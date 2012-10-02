@@ -176,15 +176,15 @@ typedef struct MixContext {
 #define A AV_OPT_FLAG_AUDIO_PARAM
 static const AVOption options[] = {
     { "inputs", "Number of inputs.",
-            OFFSET(nb_inputs), AV_OPT_TYPE_INT, { 2 }, 1, 32, A },
+            OFFSET(nb_inputs), AV_OPT_TYPE_INT, { .i64 = 2 }, 1, 32, A },
     { "duration", "How to determine the end-of-stream.",
-            OFFSET(duration_mode), AV_OPT_TYPE_INT, { DURATION_LONGEST }, 0,  2, A, "duration" },
-        { "longest",  "Duration of longest input.",  0, AV_OPT_TYPE_CONST, { DURATION_LONGEST  }, INT_MIN, INT_MAX, A, "duration" },
-        { "shortest", "Duration of shortest input.", 0, AV_OPT_TYPE_CONST, { DURATION_SHORTEST }, INT_MIN, INT_MAX, A, "duration" },
-        { "first",    "Duration of first input.",    0, AV_OPT_TYPE_CONST, { DURATION_FIRST    }, INT_MIN, INT_MAX, A, "duration" },
+            OFFSET(duration_mode), AV_OPT_TYPE_INT, { .i64 = DURATION_LONGEST }, 0,  2, A, "duration" },
+        { "longest",  "Duration of longest input.",  0, AV_OPT_TYPE_CONST, { .i64 = DURATION_LONGEST  }, INT_MIN, INT_MAX, A, "duration" },
+        { "shortest", "Duration of shortest input.", 0, AV_OPT_TYPE_CONST, { .i64 = DURATION_SHORTEST }, INT_MIN, INT_MAX, A, "duration" },
+        { "first",    "Duration of first input.",    0, AV_OPT_TYPE_CONST, { .i64 = DURATION_FIRST    }, INT_MIN, INT_MAX, A, "duration" },
     { "dropout_transition", "Transition time, in seconds, for volume "
                             "renormalization when an input stream ends.",
-            OFFSET(dropout_transition), AV_OPT_TYPE_FLOAT, { 2.0 }, 0, INT_MAX, A },
+            OFFSET(dropout_transition), AV_OPT_TYPE_FLOAT, { .dbl = 2.0 }, 0, INT_MAX, A },
     { NULL },
 };
 
@@ -556,7 +556,7 @@ AVFilter avfilter_af_amix = {
     .uninit         = uninit,
     .query_formats  = query_formats,
 
-    .inputs    = (const AVFilterPad[]) {{ .name = NULL}},
+    .inputs    = NULL,
     .outputs   = (const AVFilterPad[]) {{ .name          = "default",
                                           .type          = AVMEDIA_TYPE_AUDIO,
                                           .config_props  = config_output,

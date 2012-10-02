@@ -299,8 +299,7 @@ static inline void encode_vlc_codeword(PutBitContext *pb, unsigned codebook, int
         exponent = av_log2(val);
 
         put_bits(pb, exponent - exp_order + switch_bits, 0);
-        put_bits(pb, 1, 1);
-        put_bits(pb, exponent, val);
+        put_bits(pb, exponent + 1, val);
     } else {
         exponent = val >> rice_order;
 
@@ -868,9 +867,6 @@ static av_cold int encode_close(AVCodecContext *avctx)
     ProresContext *ctx = avctx->priv_data;
     int i;
 
-    if (avctx->coded_frame->data[0])
-        avctx->release_buffer(avctx, avctx->coded_frame);
-
     av_freep(&avctx->coded_frame);
 
     if (ctx->tdata) {
@@ -1025,35 +1021,35 @@ static av_cold int encode_init(AVCodecContext *avctx)
 
 static const AVOption options[] = {
     { "mbs_per_slice", "macroblocks per slice", OFFSET(mbs_per_slice),
-        AV_OPT_TYPE_INT, { 8 }, 1, MAX_MBS_PER_SLICE, VE },
+        AV_OPT_TYPE_INT, { .i64 = 8 }, 1, MAX_MBS_PER_SLICE, VE },
     { "profile",       NULL, OFFSET(profile), AV_OPT_TYPE_INT,
-        { PRORES_PROFILE_STANDARD },
+        { .i64 = PRORES_PROFILE_STANDARD },
         PRORES_PROFILE_PROXY, PRORES_PROFILE_HQ, VE, "profile" },
-    { "proxy",         NULL, 0, AV_OPT_TYPE_CONST, { PRORES_PROFILE_PROXY },
+    { "proxy",         NULL, 0, AV_OPT_TYPE_CONST, { .i64 = PRORES_PROFILE_PROXY },
         0, 0, VE, "profile" },
-    { "lt",            NULL, 0, AV_OPT_TYPE_CONST, { PRORES_PROFILE_LT },
+    { "lt",            NULL, 0, AV_OPT_TYPE_CONST, { .i64 = PRORES_PROFILE_LT },
         0, 0, VE, "profile" },
-    { "standard",      NULL, 0, AV_OPT_TYPE_CONST, { PRORES_PROFILE_STANDARD },
+    { "standard",      NULL, 0, AV_OPT_TYPE_CONST, { .i64 = PRORES_PROFILE_STANDARD },
         0, 0, VE, "profile" },
-    { "hq",            NULL, 0, AV_OPT_TYPE_CONST, { PRORES_PROFILE_HQ },
+    { "hq",            NULL, 0, AV_OPT_TYPE_CONST, { .i64 = PRORES_PROFILE_HQ },
         0, 0, VE, "profile" },
     { "vendor", "vendor ID", OFFSET(vendor),
         AV_OPT_TYPE_STRING, { .str = "Lavc" }, CHAR_MIN, CHAR_MAX, VE },
     { "bits_per_mb", "desired bits per macroblock", OFFSET(bits_per_mb),
-        AV_OPT_TYPE_INT, { 0 }, 0, 8192, VE },
+        AV_OPT_TYPE_INT, { .i64 = 0 }, 0, 8192, VE },
     { "quant_mat", "quantiser matrix", OFFSET(quant_sel), AV_OPT_TYPE_INT,
-        { -1 }, -1, QUANT_MAT_DEFAULT, VE, "quant_mat" },
-    { "auto",          NULL, 0, AV_OPT_TYPE_CONST, { -1 },
+        { .i64 = -1 }, -1, QUANT_MAT_DEFAULT, VE, "quant_mat" },
+    { "auto",          NULL, 0, AV_OPT_TYPE_CONST, { .i64 = -1 },
         0, 0, VE, "quant_mat" },
-    { "proxy",         NULL, 0, AV_OPT_TYPE_CONST, { QUANT_MAT_PROXY },
+    { "proxy",         NULL, 0, AV_OPT_TYPE_CONST, { .i64 = QUANT_MAT_PROXY },
         0, 0, VE, "quant_mat" },
-    { "lt",            NULL, 0, AV_OPT_TYPE_CONST, { QUANT_MAT_LT },
+    { "lt",            NULL, 0, AV_OPT_TYPE_CONST, { .i64 = QUANT_MAT_LT },
         0, 0, VE, "quant_mat" },
-    { "standard",      NULL, 0, AV_OPT_TYPE_CONST, { QUANT_MAT_STANDARD },
+    { "standard",      NULL, 0, AV_OPT_TYPE_CONST, { .i64 = QUANT_MAT_STANDARD },
         0, 0, VE, "quant_mat" },
-    { "hq",            NULL, 0, AV_OPT_TYPE_CONST, { QUANT_MAT_HQ },
+    { "hq",            NULL, 0, AV_OPT_TYPE_CONST, { .i64 = QUANT_MAT_HQ },
         0, 0, VE, "quant_mat" },
-    { "default",       NULL, 0, AV_OPT_TYPE_CONST, { QUANT_MAT_DEFAULT },
+    { "default",       NULL, 0, AV_OPT_TYPE_CONST, { .i64 = QUANT_MAT_DEFAULT },
         0, 0, VE, "quant_mat" },
     { NULL }
 };

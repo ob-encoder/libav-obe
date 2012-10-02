@@ -383,7 +383,6 @@ static inline void update_vlc_state(VlcState * const state, const int v){
 
 static inline void put_vlc_symbol(PutBitContext *pb, VlcState * const state, int v, int bits){
     int i, k, code;
-//printf("final: %d ", v);
     v = fold(v - state->bias, bits);
 
     i= state->count;
@@ -402,7 +401,8 @@ static inline void put_vlc_symbol(PutBitContext *pb, VlcState * const state, int
      code= v ^ ((2*state->drift + state->count)>>31);
 #endif
 
-//printf("v:%d/%d bias:%d error:%d drift:%d count:%d k:%d\n", v, code, state->bias, state->error_sum, state->drift, state->count, k);
+     av_dlog(NULL, "v:%d/%d bias:%d error:%d drift:%d count:%d k:%d\n", v, code,
+             state->bias, state->error_sum, state->drift, state->count, k);
     set_sr_golomb(pb, code, k, 12, bits);
 
     update_vlc_state(state, v);
@@ -421,7 +421,8 @@ static inline int get_vlc_symbol(GetBitContext *gb, VlcState * const state, int 
     assert(k<=8);
 
     v= get_sr_golomb(gb, k, 12, bits);
-//printf("v:%d bias:%d error:%d drift:%d count:%d k:%d", v, state->bias, state->error_sum, state->drift, state->count, k);
+    av_dlog(NULL, "v:%d bias:%d error:%d drift:%d count:%d k:%d",
+            v, state->bias, state->error_sum, state->drift, state->count, k);
 
 #if 0 // JPEG LS
     if(k==0 && 2*state->drift <= - state->count) v ^= (-1);
@@ -432,7 +433,7 @@ static inline int get_vlc_symbol(GetBitContext *gb, VlcState * const state, int 
     ret= fold(v + state->bias, bits);
 
     update_vlc_state(state, v);
-//printf("final: %d\n", ret);
+
     return ret;
 }
 
@@ -501,7 +502,9 @@ static av_always_inline int encode_line(FFV1Context *s, int w,
                 }
             }
 
-//            printf("count:%d index:%d, mode:%d, x:%d y:%d pos:%d\n", run_count, run_index, run_mode, x, y, (int)put_bits_count(&s->pb));
+            av_dlog(s->avctx, "count:%d index:%d, mode:%d, x:%d pos:%d\n",
+                    run_count, run_index, run_mode, x,
+                    (int)put_bits_count(&s->pb));
 
             if(run_mode == 0)
                 put_vlc_symbol(&s->pb, &p->vlc_state[context], diff, bits);
@@ -1117,7 +1120,6 @@ static int encode_frame(AVCodecContext *avctx, AVPacket *pkt,
 
     if(!f->ac){
         used_count += ff_rac_terminate(c);
-//printf("pos=%d\n", used_count);
         init_put_bits(&f->slice_context[0]->pb, pkt->data + used_count, pkt->size - used_count);
     }else if (f->ac>1){
         int i;
@@ -1302,7 +1304,8 @@ static av_always_inline void decode_line(FFV1Context *s, int w,
             }else
                 diff= get_vlc_symbol(&s->gb, &p->vlc_state[context], bits);
 
-//            printf("count:%d index:%d, mode:%d, x:%d y:%d pos:%d\n", run_count, run_index, run_mode, x, y, get_bits_count(&s->gb));
+            av_dlog(s->avctx, "count:%d index:%d, mode:%d, x:%d pos:%d\n",
+                    run_count, run_index, run_mode, x, get_bits_count(&s->gb));
         }
 
         if(sign) diff= -diff;
@@ -1432,8 +1435,6 @@ static int read_quant_table(RangeCoder *c, int16_t *quant_table, int scale){
         while(len--){
             quant_table[i] = scale*v;
             i++;
-//printf("%2d ",v);
-//if(i%16==0) printf("\n");
         }
     }
 
@@ -1576,7 +1577,8 @@ static int read_header(FFV1Context *f){
         return -1;
     }
 
-//printf("%d %d %d\n", f->chroma_h_shift, f->chroma_v_shift,f->avctx->pix_fmt);
+    av_dlog(f->avctx, "%d %d %d\n",
+            f->chroma_h_shift, f->chroma_v_shift, f->avctx->pix_fmt);
     if(f->version < 2){
         context_count= read_quant_tables(c, f->quant_table);
         if(context_count < 0){
@@ -1704,7 +1706,6 @@ static int decode_frame(AVCodecContext *avctx, void *data, int *data_size, AVPac
     if(!f->ac){
         bytes_read = c->bytestream - c->bytestream_start - 1;
         if(bytes_read ==0) av_log(avctx, AV_LOG_ERROR, "error at end of AC stream\n"); //FIXME
-//printf("pos=%d\n", bytes_read);
         init_get_bits(&f->slice_context[0]->gb, buf + bytes_read, (buf_size - bytes_read) * 8);
     } else {
         bytes_read = 0; /* avoid warning */

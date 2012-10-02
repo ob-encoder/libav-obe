@@ -638,8 +638,6 @@ static int swScale(SwsContext *c, const uint8_t *src[],
                     }
                 }
             } else {
-                assert(lumSrcPtr  + vLumFilterSize - 1 < lumPixBuf  + vLumBufSize * 2);
-                assert(chrUSrcPtr + vChrFilterSize - 1 < chrUPixBuf + vChrBufSize * 2);
                 if (c->yuv2packed1 && vLumFilterSize == 1 &&
                     vChrFilterSize <= 2) { // unscaled RGB
                     int chrAlpha = vChrFilterSize == 1 ? 0 : vChrFilter[2 * dstY + 1];
@@ -671,7 +669,7 @@ static int swScale(SwsContext *c, const uint8_t *src[],
     if (isPlanar(dstFormat) && isALPHA(dstFormat) && !alpPixBuf)
         fillPlane(dst[3], dstStride[3], dstW, dstY - lastDstY, lastDstY, 255);
 
-#if HAVE_MMXEXT && HAVE_INLINE_ASM
+#if HAVE_MMXEXT_INLINE
     if (av_get_cpu_flags() & AV_CPU_FLAG_MMXEXT)
         __asm__ volatile ("sfence" ::: "memory");
 #endif

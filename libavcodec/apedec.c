@@ -196,13 +196,13 @@ static av_cold int ape_decode_init(AVCodecContext *avctx)
     s->bps = avctx->bits_per_coded_sample;
     switch (s->bps) {
     case 8:
-        avctx->sample_fmt = AV_SAMPLE_FMT_U8;
+        avctx->sample_fmt = AV_SAMPLE_FMT_U8P;
         break;
     case 16:
-        avctx->sample_fmt = AV_SAMPLE_FMT_S16;
+        avctx->sample_fmt = AV_SAMPLE_FMT_S16P;
         break;
     case 24:
-        avctx->sample_fmt = AV_SAMPLE_FMT_S32;
+        avctx->sample_fmt = AV_SAMPLE_FMT_S32P;
         break;
     default:
         av_log_ask_for_sample(avctx, "Unsupported bits per coded sample %d\n",
@@ -830,7 +830,7 @@ static int ape_decode_frame(AVCodecContext *avctx, void *data,
     uint8_t *sample8;
     int16_t *sample16;
     int32_t *sample24;
-    int i, ret;
+    int i, ch, ret;
     int blockstodecode;
     int bytes_used = 0;
 
@@ -930,27 +930,24 @@ static int ape_decode_frame(AVCodecContext *avctx, void *data,
 
     switch (s->bps) {
     case 8:
-        sample8 = (uint8_t *)s->frame.data[0];
-        for (i = 0; i < blockstodecode; i++) {
-            *sample8++ = (s->decoded[0][i] + 0x80) & 0xff;
-            if (s->channels == 2)
-                *sample8++ = (s->decoded[1][i] + 0x80) & 0xff;
+        for (ch = 0; ch < s->channels; ch++) {
+            sample8 = (uint8_t *)s->frame.data[ch];
+            for (i = 0; i < blockstodecode; i++)
+                *sample8++ = (s->decoded[ch][i] + 0x80) & 0xff;
         }
         break;
     case 16:
-        sample16 = (int16_t *)s->frame.data[0];
-        for (i = 0; i < blockstodecode; i++) {
-            *sample16++ = s->decoded[0][i];
-            if (s->channels == 2)
-                *sample16++ = s->decoded[1][i];
+        for (ch = 0; ch < s->channels; ch++) {
+            sample16 = (int16_t *)s->frame.data[ch];
+            for (i = 0; i < blockstodecode; i++)
+                *sample16++ = s->decoded[ch][i];
         }
         break;
     case 24:
-        sample24 = (int32_t *)s->frame.data[0];
-        for (i = 0; i < blockstodecode; i++) {
-            *sample24++ = s->decoded[0][i] << 8;
-            if (s->channels == 2)
-                *sample24++ = s->decoded[1][i] << 8;
+        for (ch = 0; ch < s->channels; ch++) {
+            sample24 = (int32_t *)s->frame.data[ch];
+            for (i = 0; i < blockstodecode; i++)
+                *sample24++ = s->decoded[ch][i] << 8;
         }
         break;
     }
@@ -972,8 +969,8 @@ static void ape_flush(AVCodecContext *avctx)
 #define OFFSET(x) offsetof(APEContext, x)
 #define PAR (AV_OPT_FLAG_DECODING_PARAM | AV_OPT_FLAG_AUDIO_PARAM)
 static const AVOption options[] = {
-    { "max_samples", "maximum number of samples decoded per call",             OFFSET(blocks_per_loop), AV_OPT_TYPE_INT,   { 4608 },    1,       INT_MAX, PAR, "max_samples" },
-    { "all",         "no maximum. decode all samples for each packet at once", 0,                       AV_OPT_TYPE_CONST, { INT_MAX }, INT_MIN, INT_MAX, PAR, "max_samples" },
+    { "max_samples", "maximum number of samples decoded per call",             OFFSET(blocks_per_loop), AV_OPT_TYPE_INT,   { .i64 = 4608 },    1,       INT_MAX, PAR, "max_samples" },
+    { "all",         "no maximum. decode all samples for each packet at once", 0,                       AV_OPT_TYPE_CONST, { .i64 = INT_MAX }, INT_MIN, INT_MAX, PAR, "max_samples" },
     { NULL},
 };
 
@@ -995,5 +992,9 @@ AVCodec ff_ape_decoder = {
     .capabilities   = CODEC_CAP_SUBFRAMES | CODEC_CAP_DELAY | CODEC_CAP_DR1,
     .flush          = ape_flush,
     .long_name      = NULL_IF_CONFIG_SMALL("Monkey's Audio"),
+    .sample_fmts    = (const enum AVSampleFormat[]) { AV_SAMPLE_FMT_U8P,
+                                                      AV_SAMPLE_FMT_S16P,
+                                                      AV_SAMPLE_FMT_S32P,
+                                                      AV_SAMPLE_FMT_NONE },
     .priv_class     = &ape_decoder_class,
 };

@@ -70,7 +70,7 @@ typedef struct {
         return AVERROR(EINVAL);\
     }
 
-int av_buffersrc_write_frame(AVFilterContext *buffer_filter, AVFrame *frame)
+int av_buffersrc_write_frame(AVFilterContext *buffer_filter, const AVFrame *frame)
 {
     BufferSourceContext *c = buffer_filter->priv;
     AVFilterBufferRef *buf;
@@ -192,8 +192,8 @@ static av_cold int init_video(AVFilterContext *ctx, const char *args)
 #define OFFSET(x) offsetof(BufferSourceContext, x)
 #define A AV_OPT_FLAG_AUDIO_PARAM
 static const AVOption audio_options[] = {
-    { "time_base",      NULL, OFFSET(time_base),           AV_OPT_TYPE_RATIONAL, { 0 }, 0, INT_MAX, A },
-    { "sample_rate",    NULL, OFFSET(sample_rate),         AV_OPT_TYPE_INT,      { 0 }, 0, INT_MAX, A },
+    { "time_base",      NULL, OFFSET(time_base),           AV_OPT_TYPE_RATIONAL, { .dbl = 0 }, 0, INT_MAX, A },
+    { "sample_rate",    NULL, OFFSET(sample_rate),         AV_OPT_TYPE_INT,      { .i64 = 0 }, 0, INT_MAX, A },
     { "sample_fmt",     NULL, OFFSET(sample_fmt_str),      AV_OPT_TYPE_STRING,             .flags = A },
     { "channel_layout", NULL, OFFSET(channel_layout_str),  AV_OPT_TYPE_STRING,             .flags = A },
     { NULL },
@@ -364,7 +364,7 @@ AVFilter avfilter_vsrc_buffer = {
     .init      = init_video,
     .uninit    = uninit,
 
-    .inputs    = (const AVFilterPad[]) {{ .name = NULL }},
+    .inputs    = NULL,
     .outputs   = (const AVFilterPad[]) {{ .name            = "default",
                                           .type            = AVMEDIA_TYPE_VIDEO,
                                           .request_frame   = request_frame,
@@ -382,7 +382,7 @@ AVFilter avfilter_asrc_abuffer = {
     .init      = init_audio,
     .uninit    = uninit,
 
-    .inputs    = (const AVFilterPad[]) {{ .name = NULL }},
+    .inputs    = NULL,
     .outputs   = (const AVFilterPad[]) {{ .name            = "default",
                                           .type            = AVMEDIA_TYPE_AUDIO,
                                           .request_frame   = request_frame,

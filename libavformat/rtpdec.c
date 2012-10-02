@@ -43,10 +43,16 @@
          'ffio_open_dyn_packet_buf')
 */
 
-static RTPDynamicProtocolHandler ff_realmedia_mp3_dynamic_handler = {
+static RTPDynamicProtocolHandler realmedia_mp3_dynamic_handler = {
     .enc_name           = "X-MP3-draft-00",
     .codec_type         = AVMEDIA_TYPE_AUDIO,
     .codec_id           = AV_CODEC_ID_MP3ADU,
+};
+
+static RTPDynamicProtocolHandler speex_dynamic_handler = {
+    .enc_name         = "speex",
+    .codec_type       = AVMEDIA_TYPE_AUDIO,
+    .codec_id         = AV_CODEC_ID_SPEEX,
 };
 
 /* statistics functions */
@@ -69,6 +75,7 @@ void av_register_rtp_dynamic_payload_handlers(void)
     ff_register_dynamic_payload_handler(&ff_h263_rfc2190_dynamic_handler);
     ff_register_dynamic_payload_handler(&ff_h264_dynamic_handler);
     ff_register_dynamic_payload_handler(&ff_ilbc_dynamic_handler);
+    ff_register_dynamic_payload_handler(&ff_jpeg_dynamic_handler);
     ff_register_dynamic_payload_handler(&ff_vorbis_dynamic_handler);
     ff_register_dynamic_payload_handler(&ff_theora_dynamic_handler);
     ff_register_dynamic_payload_handler(&ff_qdm2_dynamic_handler);
@@ -76,7 +83,8 @@ void av_register_rtp_dynamic_payload_handlers(void)
     ff_register_dynamic_payload_handler(&ff_mp4a_latm_dynamic_handler);
     ff_register_dynamic_payload_handler(&ff_vp8_dynamic_handler);
     ff_register_dynamic_payload_handler(&ff_qcelp_dynamic_handler);
-    ff_register_dynamic_payload_handler(&ff_realmedia_mp3_dynamic_handler);
+    ff_register_dynamic_payload_handler(&realmedia_mp3_dynamic_handler);
+    ff_register_dynamic_payload_handler(&speex_dynamic_handler);
 
     ff_register_dynamic_payload_handler(&ff_ms_rtp_asf_pfv_handler);
     ff_register_dynamic_payload_handler(&ff_ms_rtp_asf_pfa_handler);

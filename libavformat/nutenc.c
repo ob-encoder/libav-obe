@@ -95,16 +95,12 @@ static int find_header_idx(AVFormatContext *s, AVCodecContext *c, int size, int 
     int i;
     int len= find_expected_header(c, size, frame_type, out);
 
-//av_log(NULL, AV_LOG_ERROR, "expected_h len=%d size=%d codec_id=%d\n", len, size, c->codec_id);
-
     for(i=1; i<nut->header_count; i++){
         if(   len == nut->header_len[i]
            && !memcmp(out, nut->header[i], len)){
-//    av_log(NULL, AV_LOG_ERROR, "found %d\n", i);
             return i;
         }
     }
-//    av_log(NULL, AV_LOG_ERROR, "nothing found\n");
     return 0;
 }
 
@@ -263,13 +259,17 @@ static void put_s(AVIOContext *bc, int64_t val){
 }
 
 #ifdef TRACE
-static inline void ff_put_v_trace(AVIOContext *bc, uint64_t v, char *file, char *func, int line){
+static inline void ff_put_v_trace(AVIOContext *bc, uint64_t v, const char *file,
+                                  const char *func, int line)
+{
     av_log(NULL, AV_LOG_DEBUG, "ff_put_v %5"PRId64" / %"PRIX64" in %s %s:%d\n", v, v, file, func, line);
 
     ff_put_v(bc, v);
 }
 
-static inline void put_s_trace(AVIOContext *bc, int64_t v, char *file, char *func, int line){
+static inline void put_s_trace(AVIOContext *bc, int64_t v, const char *file,
+                               const char *func, int line)
+{
     av_log(NULL, AV_LOG_DEBUG, "put_s %5"PRId64" / %"PRIX64" in %s %s:%d\n", v, v, file, func, line);
 
     put_s(bc, v);
@@ -851,7 +851,7 @@ static int nut_write_trailer(AVFormatContext *s){
 
     while(nut->header_count<3)
         write_headers(s, bc);
-    avio_flush(bc);
+
     ff_nut_free_sp(nut);
     av_freep(&nut->stream);
     av_freep(&nut->chapter);

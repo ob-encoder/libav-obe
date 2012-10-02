@@ -24,6 +24,7 @@
 
 #include "libavutil/cpu.h"
 #include "libavutil/x86/asm.h"
+#include "libavutil/x86/cpu.h"
 #include "libavcodec/dsputil.h"
 #include "libavcodec/mpegvideo.h"
 #include "libavcodec/mathops.h"
@@ -848,8 +849,9 @@ static void sub_hfyu_median_prediction_mmx2(uint8_t *dst, const uint8_t *src1, c
     uint8_t l, lt;
 
     __asm__ volatile(
+        "movq  (%1, %0), %%mm0          \n\t" // LT
+        "psllq $8, %%mm0                \n\t"
         "1:                             \n\t"
-        "movq  -1(%1, %0), %%mm0        \n\t" // LT
         "movq  (%1, %0), %%mm1          \n\t" // T
         "movq  -1(%2, %0), %%mm2        \n\t" // L
         "movq  (%2, %0), %%mm3          \n\t" // X
@@ -864,6 +866,7 @@ static void sub_hfyu_median_prediction_mmx2(uint8_t *dst, const uint8_t *src1, c
         "psubb %%mm4, %%mm3             \n\t" // dst - pred
         "movq %%mm3, (%3, %0)           \n\t"
         "add $8, %0                     \n\t"
+        "movq -1(%1, %0), %%mm0         \n\t" // LT
         "cmp %4, %0                     \n\t"
         " jb 1b                         \n\t"
         : "+r" (i)
@@ -1041,7 +1044,7 @@ static int ssd_int8_vs_int16_mmx(const int8_t *pix1, const int16_t *pix2, int si
 #define SET_RND MOVQ_WONE
 #define SCALE_OFFSET 1
 
-#include "dsputil_mmx_qns_template.c"
+#include "dsputil_qns_template.c"
 
 #undef DEF
 #undef SET_RND
@@ -1055,7 +1058,7 @@ static int ssd_int8_vs_int16_mmx(const int8_t *pix1, const int16_t *pix2, int si
     "pmulhrw " #s ", "#x "           \n\t"\
     "pmulhrw " #s ", "#y "           \n\t"
 
-#include "dsputil_mmx_qns_template.c"
+#include "dsputil_qns_template.c"
 
 #undef DEF
 #undef SET_RND
@@ -1074,7 +1077,7 @@ static int ssd_int8_vs_int16_mmx(const int8_t *pix1, const int16_t *pix2, int si
     "pmulhrsw " #s ", "#x "          \n\t"\
     "pmulhrsw " #s ", "#y "          \n\t"
 
-#include "dsputil_mmx_qns_template.c"
+#include "dsputil_qns_template.c"
 
 #undef DEF
 #undef SET_RND
@@ -1180,17 +1183,16 @@ void ff_dsputilenc_init_mmx(DSPContext* c, AVCodecContext *avctx)
     }
 #endif /* HAVE_INLINE_ASM */
 
-#if HAVE_YASM
-    if (mm_flags & AV_CPU_FLAG_MMX) {
+    if (EXTERNAL_MMX(mm_flags)) {
         c->hadamard8_diff[0] = ff_hadamard8_diff16_mmx;
         c->hadamard8_diff[1] = ff_hadamard8_diff_mmx;
 
-        if (mm_flags & AV_CPU_FLAG_MMXEXT) {
+        if (EXTERNAL_MMXEXT(mm_flags)) {
             c->hadamard8_diff[0] = ff_hadamard8_diff16_mmx2;
             c->hadamard8_diff[1] = ff_hadamard8_diff_mmx2;
         }
 
-        if (mm_flags & AV_CPU_FLAG_SSE2){
+        if (EXTERNAL_SSE2(mm_flags)) {
             c->sse[0] = ff_sse16_sse2;
 
 #if HAVE_ALIGNED_STACK
@@ -1199,14 +1201,11 @@ void ff_dsputilenc_init_mmx(DSPContext* c, AVCodecContext *avctx)
 #endif
         }
 
-#if HAVE_SSSE3 && HAVE_ALIGNED_STACK
-        if (mm_flags & AV_CPU_FLAG_SSSE3) {
+        if (EXTERNAL_SSSE3(mm_flags) && HAVE_ALIGNED_STACK) {
             c->hadamard8_diff[0] = ff_hadamard8_diff16_ssse3;
             c->hadamard8_diff[1] = ff_hadamard8_diff_ssse3;
         }
-#endif
     }
-#endif /* HAVE_YASM */
 
     ff_dsputil_init_pix_mmx(c, avctx);
 }

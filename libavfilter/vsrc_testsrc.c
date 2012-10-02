@@ -67,7 +67,7 @@ static const AVOption testsrc_options[] = {
     { "rate",     "set video rate",     OFFSET(rate),     AV_OPT_TYPE_STRING, {.str = "25"},    },
     { "r",        "set video rate",     OFFSET(rate),     AV_OPT_TYPE_STRING, {.str = "25"},    },
     { "duration", "set video duration", OFFSET(duration), AV_OPT_TYPE_STRING, {.str = NULL},    },
-    { "sar",      "set video sample aspect ratio", OFFSET(sar), AV_OPT_TYPE_RATIONAL, {1},  0, INT_MAX },
+    { "sar",      "set video sample aspect ratio", OFFSET(sar), AV_OPT_TYPE_RATIONAL, {.dbl = 1},  0, INT_MAX },
     { NULL },
 };
 
@@ -367,7 +367,7 @@ AVFilter avfilter_vsrc_testsrc = {
 
     .query_formats = test_query_formats,
 
-    .inputs    = (const AVFilterPad[]) {{ .name = NULL}},
+    .inputs    = NULL,
 
     .outputs   = (const AVFilterPad[]) {{ .name = "default",
                                           .type = AVMEDIA_TYPE_VIDEO,
@@ -494,7 +494,7 @@ AVFilter avfilter_vsrc_rgbtestsrc = {
 
     .query_formats = rgbtest_query_formats,
 
-    .inputs    = (const AVFilterPad[]) {{ .name = NULL}},
+    .inputs    = NULL,
 
     .outputs   = (const AVFilterPad[]) {{ .name = "default",
                                           .type = AVMEDIA_TYPE_VIDEO,

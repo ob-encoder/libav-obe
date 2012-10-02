@@ -55,7 +55,7 @@ if test "$E1" != 0 || test "$E2" = 0; then
 fi
 
 show_help(){
-cat <<EOF
+    cat <<EOF
 Usage: configure [options]
 Options: [defaults in brackets after descriptions]
 
@@ -181,6 +181,7 @@ External library support:
   --enable-libopencore-amrwb enable AMR-WB decoding via libopencore-amrwb [no]
   --enable-libopencv       enable video filtering via libopencv [no]
   --enable-libopenjpeg     enable JPEG 2000 de/encoding via OpenJPEG [no]
+  --enable-libopus         enable Opus decoding via libopus [no]
   --enable-libpulse        enable Pulseaudio input via libpulse [no]
   --enable-librtmp         enable RTMP[E] support via librtmp [no]
   --enable-libschroedinger enable Dirac de/encoding via libschroedinger [no]
@@ -205,6 +206,7 @@ Advanced options (experts only):
   --target-os=OS           compiler targets OS [$target_os]
   --target-exec=CMD        command to run executables on target
   --target-path=DIR        path to view of build directory on target
+  --toolchain=NAME         set tool defaults according to NAME
   --nm=NM                  use nm tool
   --ar=AR                  use archive tool AR [$ar_default]
   --as=AS                  use assembler AS [$as_default]
@@ -259,6 +261,7 @@ Optimization options (experts only):
   --disable-mmi            disable MMI optimizations
   --disable-neon           disable NEON optimizations
   --disable-vis            disable VIS optimizations
+  --disable-inline-asm     disable use of inline assembler
   --disable-yasm           disable use of yasm assembler
 
 Developer options (useful when working on Libav itself):
@@ -320,7 +323,7 @@ Rerun configure with logging enabled (do not use --disable-logging), and
 include the log this produces with your report.
 EOF
     else
-cat <<EOF
+        cat <<EOF
 Include the log file "$logfile" produced by configure as this will help
 solving the problem.
 EOF
@@ -862,6 +865,9 @@ check_exec_crash(){
 static void sighandler(int sig){
     raise(SIGTERM);
 }
+int foo(void){
+    $code
+}
 int main(void){
     signal(SIGILL, sighandler);
     signal(SIGFPE, sighandler);
@@ -869,7 +875,7 @@ int main(void){
 #ifdef SIGBUS
     signal(SIGBUS, sighandler);
 #endif
-    { $code }
+    foo();
 }
 EOF
 }
@@ -1004,6 +1010,7 @@ CONFIG_LIST="
     libopencore_amrwb
     libopencv
     libopenjpeg
+    libopus
     libpulse
     librtmp
     libschroedinger
@@ -1131,6 +1138,7 @@ HAVE_LIST="
     dev_ic_bt8xx_h
     dev_video_bktr_ioctl_bt848_h
     dev_video_meteor_ioctl_meteor_h
+    direct_h
     dlfcn_h
     dlopen
     dos_paths
@@ -1183,6 +1191,7 @@ HAVE_LIST="
     mkstemp
     mm_empty
     mmap
+    msvcrt
     nanosleep
     poll_h
     posix_memalign
@@ -1274,6 +1283,7 @@ CMDLINE_SELECT="
     cross_compile
     debug
     extra_warnings
+    inline_asm
     logging
     optimizations
     symver
@@ -1320,6 +1330,7 @@ CMDLINE_SET="
     target_exec
     target_os
     target_path
+    toolchain
 "
 
 CMDLINE_APPEND="
@@ -1380,6 +1391,8 @@ need_memalign="altivec neon sse"
 
 symver_if_any="symver_asm_label symver_gnu_asm"
 
+log2_deps="!msvcrt"
+
 # subsystems
 dct_select="rdft"
 mdct_select="fft"
@@ -1409,7 +1422,7 @@ dnxhd_encoder_select="aandcttables mpegvideoenc"
 dxa_decoder_select="zlib"
 eac3_decoder_select="ac3_decoder"
 eac3_encoder_select="ac3_encoder"
-eamad_decoder_select="aandcttables error_resilience"
+eamad_decoder_select="aandcttables error_resilience mpegvideo"
 eatgq_decoder_select="aandcttables"
 eatqi_decoder_select="aandcttables error_resilience mpegvideo"
 ffv1_decoder_select="golomb rangecoder"
@@ -1508,6 +1521,7 @@ tiff_encoder_suggest="zlib"
 truehd_decoder_select="mlp_decoder"
 tscc_decoder_select="zlib"
 twinvq_decoder_select="mdct lsp sinewin"
+utvideo_encoder_select="huffman"
 vc1_decoder_select="h263_decoder h264chroma h264qpel"
 vc1_dxva2_hwaccel_deps="dxva2api_h"
 vc1_dxva2_hwaccel_select="dxva2 vc1_decoder"
@@ -1568,6 +1582,8 @@ libopencore_amrnb_encoder_deps="libopencore_amrnb"
 libopencore_amrwb_decoder_deps="libopencore_amrwb"
 libopenjpeg_decoder_deps="libopenjpeg"
 libopenjpeg_encoder_deps="libopenjpeg"
+libopus_decoder_deps="libopus"
+libopus_encoder_deps="libopus"
 libschroedinger_decoder_deps="libschroedinger"
 libschroedinger_encoder_deps="libschroedinger"
 libspeex_decoder_deps="libspeex"
@@ -1608,6 +1624,7 @@ rtsp_muxer_select="rtp_muxer http_protocol rtp_protocol"
 sap_demuxer_select="sdp_demuxer"
 sap_muxer_select="rtp_muxer rtp_protocol"
 sdp_demuxer_select="rtpdec"
+smoothstreaming_muxer_select="ismv_muxer"
 spdif_muxer_select="aac_parser"
 tg2_muxer_select="mov_muxer"
 tgp_muxer_select="mov_muxer"
@@ -1759,13 +1776,12 @@ ar_default="ar"
 cc_default="gcc"
 host_cc_default="gcc"
 ln_s="ln -sf"
-nm_default="nm"
+nm_default="nm -g"
 objformat="elf"
 pkg_config_default=pkg-config
 ranlib="ranlib"
 yasmexe="yasm"
 
-nm_opts='-g'
 nogas=":"
 
 # machine
@@ -2028,7 +2044,19 @@ ranlib="${cross_prefix}${ranlib}"
 
 sysinclude_default="${sysroot}/usr/include"
 
-set_default cc nm pkg_config sysinclude
+case "$toolchain" in
+    msvc)
+        cc_default="c99wrap cl"
+        ld_default="c99wrap link"
+        nm_default="dumpbin -symbols"
+        ar_default="lib"
+    ;;
+    ?*)
+        die "Unknown toolchain $toolchain"
+    ;;
+esac
+
+set_default cc pkg_config sysinclude
 enabled cross_compile || host_cc_default=$cc
 set_default host_cc
 
@@ -2095,6 +2123,28 @@ EOF
     die "Sanity test failed."
 fi
 
+msvc_flags(){
+    for flag; do
+        case $flag in
+            -fomit-frame-pointer) echo -Oy ;;
+            -g)                   echo -Z7 ;;
+            -Wall)                echo -W4 -wd4244 -wd4127 -wd4018 -wd4389 \
+                                       -wd4146 -wd4057 -wd4204 -wd4706 -wd4305 \
+                                       -wd4152 -wd4324 -we4013 -wd4100 -wd4214 \
+                                       -wd4996 ;;
+            -std=c99)             ;;
+            -fno-math-errno)      ;;
+            -fno-common)          ;;
+            -fno-signed-zeros)    ;;
+            -lz)                  echo zlib.lib ;;
+            -lavifil32)           echo vfw32.lib ;;
+            -lavicap32)           echo vfw32.lib user32.lib ;;
+            -l*)                  echo ${flag#-l}.lib ;;
+            *)                    echo $flag ;;
+        esac
+    done
+}
+
 pgi_flags(){
     for flag; do
         case $flag in
@@ -2122,7 +2172,7 @@ suncc_flags(){
                     prescott|nocona)    echo -xarch=sse3 -xchip=pentium4 ;;
                     *-sse3)             echo -xarch=sse3                 ;;
                     core2)              echo -xarch=ssse3 -xchip=core2   ;;
-                    amdfam10|barcelona)       echo -xarch=sse4_1         ;;
+                    amdfam10|barcelona|bdver*) echo -xarch=sse4_1        ;;
                     athlon-4|athlon-[mx]p)    echo -xarch=ssea           ;;
                     k8|opteron|athlon64|athlon-fx)
                                               echo -xarch=sse2a          ;;
@@ -2231,7 +2281,7 @@ probe_cc(){
         _depflags='-MMD'
         _cflags_speed='-O3'
         _cflags_size='-Os'
-    elif $_cc -version 2>/dev/null | grep -q TMS470; then
+    elif $_cc -version 2>/dev/null | grep -Eq 'TMS470|TI ARM'; then
         _type=tms470
         _ident=$($_cc -version | head -n1 | tr -s ' ')
         _flags='--gcc --abi=eabi -me'
@@ -2281,6 +2331,29 @@ probe_cc(){
         _cflags_size="-O2 -Munroll=c:1 $opt_common"
         _cflags_noopt="-O1"
         _flags_filter=pgi_flags
+    elif $_cc 2>&1 | grep -q Microsoft; then
+        _type=msvc
+        _ident=$($cc 2>&1 | head -n1)
+        _DEPCMD='$(DEP$(1)) $(DEP$(1)FLAGS) $($(1)DEP_FLAGS) $< 2>&1 | awk '\''/including/ { sub(/^.*file: */, ""); gsub(/\\/, "/"); if (!match($$0, / /)) print "$@:", $$0 }'\'' > $(@:.o=.d)'
+        _DEPFLAGS='$(CPPFLAGS) $(CFLAGS) -showIncludes -Zs'
+        _cflags_speed="-O2"
+        _cflags_size="-O1"
+        # Nonstandard output options, to avoid msys path conversion issues, relies on wrapper to remap it
+        if $_cc 2>&1 | grep -q Linker; then
+            _ld_o='-out $@'
+        else
+            _ld_o='-Fe$@'
+        fi
+        _cc_o='-Fo $@'
+        _cc_e='-P -Fi $@'
+        _flags_filter=msvc_flags
+        _ld_lib='lib%.a'
+        _ld_path='-libpath:'
+        _flags='-nologo'
+        _cflags='-D_USE_MATH_DEFINES -Dinline=__inline -FIstdlib.h -Dstrtoll=_strtoi64'
+        if [ $pfx = hostcc ]; then
+            append _cflags -Dsnprintf=_snprintf
+        fi
     fi
 
     eval ${pfx}_type=\$_type
@@ -2347,6 +2420,17 @@ if [ -z "$CC_DEPFLAGS" ] && [ "$dep_cc" != "$cc" ]; then
     CCDEP=${_DEPCMD:-$DEPCMD}
     CCDEP_FLAGS=${_DEPFLAGS:=$DEPFLAGS}
     DEPCCFLAGS=$_flags
+fi
+
+if $ar 2>&1 | grep -q Microsoft; then
+    arflags="-nologo"
+    ar_o='-out:$@'
+elif $ar 2>&1 | grep -q 'Texas Instruments'; then
+    arflags="rq"
+    ar_o='$@'
+else
+    arflags="rc"
+    ar_o='$@'
 fi
 
 add_cflags $extra_cflags
@@ -2494,7 +2578,7 @@ elif enabled x86; then
             disable cmov
         ;;
         # targets that do support conditional mov (cmov)
-        i686|pentiumpro|pentium[23]|pentium-m|athlon|athlon-tbird|athlon-4|athlon-[mx]p|athlon64*|k8*|opteron*|athlon-fx|core2|amdfam10|barcelona|atom)
+        i686|pentiumpro|pentium[23]|pentium-m|athlon|athlon-tbird|athlon-4|athlon-[mx]p|athlon64*|k8*|opteron*|athlon-fx|core2|amdfam10|barcelona|atom|bdver*)
             cpuflags="-march=$cpu"
             enable cmov
             enable fast_cmov
@@ -2637,7 +2721,7 @@ case $target_os in
         # guards for processor-specific code, instead suppress
         # generation of the HWCAPS ELF section on Solaris x86 only.
         enabled_all suncc x86 && echo "hwcap_1 = OVERRIDE;" > mapfile && add_ldflags -Wl,-M,mapfile
-        nm_opts='-P -g'
+        nm_default='nm -P -g'
         ;;
     netbsd)
         disable symver
@@ -2706,11 +2790,9 @@ case $target_os in
         SHFLAGS='-shared -Wl,--output-def,$$(@:$(SLIBSUF)=.def) -Wl,--out-implib,$(SUBDIR)lib$(SLIBNAME:$(SLIBSUF)=.dll.a) -Wl,--enable-runtime-pseudo-reloc -Wl,--enable-auto-image-base'
         objformat="win32"
         dlltool="${cross_prefix}dlltool"
+        ranlib=:
         enable dos_paths
         check_cflags -fno-common
-        check_cpp_condition _mingw.h "defined (__MINGW64_VERSION_MAJOR) || (__MINGW32_MAJOR_VERSION > 3) \
-                                      || (__MINGW32_MAJOR_VERSION == 3 && __MINGW32_MINOR_VERSION >= 15)" ||
-                die "ERROR: MinGW runtime version must be >= 3.15."
         add_cppflags -U__STRICT_ANSI__
         ;;
     cygwin*)
@@ -2756,13 +2838,13 @@ case $target_os in
         SLIBNAME_WITH_VERSION='$(SLIBPREF)$(NAME)-$(LIBVERSION)$(SLIBSUF)'
         SLIBNAME_WITH_MAJOR='$(SLIBPREF)$(shell echo $(NAME) | cut -c1-6)$(LIBMAJOR)$(SLIBSUF)'
         SLIB_CREATE_DEF_CMD='echo LIBRARY $(SLIBNAME_WITH_MAJOR) INITINSTANCE TERMINSTANCE > $(SUBDIR)$(NAME).def; \
-          echo PROTMODE >> $(SUBDIR)$(NAME).def; \
-          echo CODE PRELOAD MOVEABLE DISCARDABLE >> $(SUBDIR)$(NAME).def; \
-          echo DATA PRELOAD MOVEABLE MULTIPLE NONSHARED >> $(SUBDIR)$(NAME).def; \
-          echo EXPORTS >> $(SUBDIR)$(NAME).def; \
-          emxexp -o $(OBJS) >> $(SUBDIR)$(NAME).def'
+            echo PROTMODE >> $(SUBDIR)$(NAME).def; \
+            echo CODE PRELOAD MOVEABLE DISCARDABLE >> $(SUBDIR)$(NAME).def; \
+            echo DATA PRELOAD MOVEABLE MULTIPLE NONSHARED >> $(SUBDIR)$(NAME).def; \
+            echo EXPORTS >> $(SUBDIR)$(NAME).def; \
+            emxexp -o $(OBJS) >> $(SUBDIR)$(NAME).def'
         SLIB_EXTRA_CMD='emximp -o $(SUBDIR)$(LIBPREF)$(NAME)_dll.a $(SUBDIR)$(NAME).def; \
-          emximp -o $(SUBDIR)$(LIBPREF)$(NAME)_dll.lib $(SUBDIR)$(NAME).def;'
+            emximp -o $(SUBDIR)$(LIBPREF)$(NAME)_dll.lib $(SUBDIR)$(NAME).def;'
         SLIB_INSTALL_EXTRA_LIB='$(LIBPREF)$(NAME)_dll.a $(LIBPREF)$(NAME)_dll.lib'
         enable dos_paths
         ;;
@@ -2795,6 +2877,32 @@ case $target_os in
         ;;
 esac
 
+# determine libc flavour
+
+if check_cpp_condition features.h "defined __UCLIBC__"; then
+    libc_type=uclibc
+elif check_cpp_condition features.h "defined __GLIBC__"; then
+    libc_type=glibc
+elif check_header _mingw.h; then
+    libc_type=mingw
+    check_cpp_condition _mingw.h \
+        "defined (__MINGW64_VERSION_MAJOR) || (__MINGW32_MAJOR_VERSION > 3) || \
+            (__MINGW32_MAJOR_VERSION == 3 && __MINGW32_MINOR_VERSION >= 15)" ||
+        die "ERROR: MinGW runtime version must be >= 3.15."
+elif check_cpp_condition newlib.h "defined _NEWLIB_VERSION"; then
+    libc_type=newlib
+elif check_func_headers stdlib.h _get_doserrno; then
+    libc_type=msvcrt
+    add_cflags -Dstrtod=avpriv_strtod
+    add_cflags -Dsnprintf=avpriv_snprintf   \
+               -D_snprintf=avpriv_snprintf  \
+               -Dvsnprintf=avpriv_vsnprintf
+elif check_cpp_condition stddef.h "defined __KLIBC__"; then
+    libc_type=klibc
+fi
+
+test -n "$libc_type" && enable $libc_type
+
 esc(){
     echo "$*" | sed 's/%/%25/g;s/:/%3a/g'
 }
@@ -2804,6 +2912,7 @@ echo "config:$arch:$subarch:$cpu:$target_os:$(esc $cc_ident):$(esc $LIBAV_CONFIG
 check_cpp_condition stdlib.h "defined(__PIC__) || defined(__pic__) || defined(PIC)" && enable pic
 
 set_default $PATHS_LIST
+set_default nm
 
 # we need to build at least one lib type
 if ! enabled_any static shared; then
@@ -2851,10 +2960,10 @@ enabled pic && enable_pic
 check_cc <<EOF || die "Symbol mangling check failed."
 int ff_extern;
 EOF
-sym=$($nm $nm_opts $TMPO | awk '/ff_extern/{ print substr($0, match($0, /[^ \t]*ff_extern/)) }')
+sym=$($nm $TMPO | awk '/ff_extern/{ print substr($0, match($0, /[^ \t]*ff_extern/)) }')
 extern_prefix=${sym%%ff_extern*}
 
-check_cc <<EOF && enable inline_asm
+check_cc <<EOF && enable_weak inline_asm
 void foo(void) { __asm__ volatile ("" ::); }
 EOF
 
@@ -2951,11 +3060,11 @@ elif enabled sparc; then
 
     enabled vis &&
         check_inline_asm vis '"pdist %f0, %f0, %f0"' -mcpu=ultrasparc &&
-        add_cflags -mcpu=ultrasparc -mtune=ultrasparc
+            add_cflags -mcpu=ultrasparc -mtune=ultrasparc
 
 elif enabled x86; then
 
-    check_code ld immintrin.h "__xgetbv(0)" && enable xgetbv
+    check_code ld immintrin.h "return __xgetbv(0)" && enable xgetbv
     check_code ld intrin.h "int info[4]; __cpuid(info, 0)" && enable cpuid
     check_code ld intrin.h "__rdtsc()" && enable rdtsc
     check_code ld intrin.h "unsigned int x = __readeflags()" && enable rweflags
@@ -2969,11 +3078,9 @@ elif enabled x86; then
     # if the base pointer is used to access it because the
     # base pointer is cleared in the inline assembly code.
     check_exec_crash <<EOF && enable ebp_available
-    volatile int i=0;
-    __asm__ volatile (
-        "xorl %%ebp, %%ebp"
-    ::: "%ebp");
-    return i;
+volatile int i=0;
+__asm__ volatile ("xorl %%ebp, %%ebp" ::: "%ebp");
+return i;
 EOF
 
     # check whether EBX is available on x86
@@ -3104,6 +3211,7 @@ check_func_headers windows.h MapViewOfFile
 check_func_headers windows.h Sleep
 check_func_headers windows.h VirtualAlloc
 
+check_header direct.h
 check_header dlfcn.h
 check_header dxva.h
 check_header dxva2api.h
@@ -3189,6 +3297,7 @@ enabled libopencore_amrnb  && require libopencore_amrnb opencore-amrnb/interf_de
 enabled libopencore_amrwb  && require libopencore_amrwb opencore-amrwb/dec_if.h D_IF_init -lopencore-amrwb
 enabled libopencv  && require_pkg_config opencv opencv/cv.h cvCreateImageHeader
 enabled libopenjpeg && require libopenjpeg openjpeg.h opj_version -lopenjpeg
+enabled libopus    && require_pkg_config opus opus_multistream.h opus_multistream_decoder_create
 enabled libpulse && require_pkg_config libpulse-simple pulse/simple.h pa_simple_new
 enabled librtmp    && require_pkg_config librtmp librtmp/rtmp.h RTMP_Socket
 enabled libschroedinger && require_pkg_config schroedinger-1.0 schroedinger/schro.h schro_init
@@ -3279,10 +3388,8 @@ if ! disabled vda && check_header VideoDecodeAcceleration/VDADecoder.h; then
 fi
 
 if ! disabled vdpau && enabled vdpau_vdpau_h; then
-check_cpp_condition \
-    vdpau/vdpau.h "defined VDP_DECODER_PROFILE_MPEG4_PART2_ASP" ||
-    { echolog "Please upgrade to libvdpau >= 0.2 if you would like vdpau support." &&
-      disable vdpau; }
+    check_cpp_condition vdpau/vdpau.h "defined VDP_DECODER_PROFILE_MPEG4_PART2_ASP" ||
+        { echolog "Please upgrade to libvdpau >= 0.2 if you would like vdpau support." && disable vdpau; }
 fi
 
 enabled debug && add_cflags -g"$debuglevel" && add_asflags -g"$debuglevel"
@@ -3400,6 +3507,8 @@ elif enabled tms470; then
     add_cflags -pds=824 -pds=837
 elif enabled pathscale; then
     add_cflags -fstrict-overflow -OPT:wrap_around_unsafe_opt=OFF
+elif enabled msvc; then
+    enabled x86_32 && disable aligned_stack
 fi
 
 enabled_any $THREADS_LIST      && enable threads
@@ -3487,6 +3596,7 @@ echo "libopencore-amrnb support ${libopencore_amrnb-no}"
 echo "libopencore-amrwb support ${libopencore_amrwb-no}"
 echo "libopencv support         ${libopencv-no}"
 echo "libopenjpeg enabled       ${libopenjpeg-no}"
+echo "libopus enabled           ${libopus-no}"
 echo "libpulse enabled          ${libpulse-no}"
 echo "librtmp enabled           ${librtmp-no}"
 echo "libschroedinger enabled   ${libschroedinger-no}"
@@ -3555,6 +3665,8 @@ DEPASFLAGS=$DEPASFLAGS \$(CPPFLAGS)
 YASM=$yasmexe
 DEPYASM=$yasmexe
 AR=$ar
+ARFLAGS=$arflags
+AR_O=$ar_o
 RANLIB=$ranlib
 LN_S=$ln_s
 CPPFLAGS=$CPPFLAGS
@@ -3699,15 +3811,15 @@ test -n "$WARNINGS" && printf "\n$WARNINGS"
 # build pkg-config files
 
 pkgconfig_generate(){
-name=$1
-shortname=${name#lib}${build_suffix}
-comment=$2
-version=$3
-libs=$4
-requires=$5
-enabled ${name#lib} || return 0
-mkdir -p $name
-cat <<EOF > $name/$name.pc
+    name=$1
+    shortname=${name#lib}${build_suffix}
+    comment=$2
+    version=$3
+    libs=$4
+    requires=$5
+    enabled ${name#lib} || return 0
+    mkdir -p $name
+    cat <<EOF > $name/$name.pc
 prefix=$prefix
 exec_prefix=\${prefix}
 libdir=$libdir
@@ -3723,7 +3835,7 @@ Libs: -L\${libdir} -l${shortname} $(enabled shared || echo $libs)
 Libs.private: $(enabled shared && echo $libs)
 Cflags: -I\${includedir}
 EOF
-cat <<EOF > $name/$name-uninstalled.pc
+    cat <<EOF > $name/$name-uninstalled.pc
 prefix=
 exec_prefix=
 libdir=\${pcfiledir}
