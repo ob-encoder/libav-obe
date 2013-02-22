@@ -23,6 +23,7 @@
 #include "libavutil/imgutils.h"
 #include "avcodec.h"
 #include "get_bits.h"
+#include "internal.h"
 
 #define BIT_PLANAR   0x00
 #define BYTE_PLANAR  0x20
@@ -207,7 +208,7 @@ static void cdxl_decode_ham8(CDXLVideoContext *c)
 }
 
 static int cdxl_decode_frame(AVCodecContext *avctx, void *data,
-                             int *data_size, AVPacket *pkt)
+                             int *got_frame, AVPacket *pkt)
 {
     CDXLVideoContext *c = avctx->priv_data;
     AVFrame * const p = &c->frame;
@@ -247,11 +248,11 @@ static int cdxl_decode_frame(AVCodecContext *avctx, void *data,
     if (c->video_size < aligned_width * avctx->height * c->bpp / 8)
         return AVERROR_INVALIDDATA;
     if (!encoding && c->palette_size && c->bpp <= 8) {
-        avctx->pix_fmt = PIX_FMT_PAL8;
+        avctx->pix_fmt = AV_PIX_FMT_PAL8;
     } else if (encoding == 1 && (c->bpp == 6 || c->bpp == 8)) {
         if (c->palette_size != (1 << (c->bpp - 1)))
             return AVERROR_INVALIDDATA;
-        avctx->pix_fmt = PIX_FMT_BGR24;
+        avctx->pix_fmt = AV_PIX_FMT_BGR24;
     } else {
         av_log_ask_for_sample(avctx, "unsupported encoding %d and bpp %d\n",
                               encoding, c->bpp);
@@ -262,7 +263,7 @@ static int cdxl_decode_frame(AVCodecContext *avctx, void *data,
         avctx->release_buffer(avctx, p);
 
     p->reference = 0;
-    if ((ret = avctx->get_buffer(avctx, p)) < 0) {
+    if ((ret = ff_get_buffer(avctx, p)) < 0) {
         av_log(avctx, AV_LOG_ERROR, "get_buffer() failed\n");
         return ret;
     }
@@ -280,7 +281,7 @@ static int cdxl_decode_frame(AVCodecContext *avctx, void *data,
     } else {
         cdxl_decode_rgb(c);
     }
-    *data_size      = sizeof(AVFrame);
+    *got_frame = 1;
     *(AVFrame*)data = c->frame;
 
     return buf_size;

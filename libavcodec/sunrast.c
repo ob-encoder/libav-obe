@@ -23,6 +23,7 @@
 #include "libavutil/intreadwrite.h"
 #include "libavutil/imgutils.h"
 #include "avcodec.h"
+#include "internal.h"
 #include "sunrast.h"
 
 typedef struct SUNRASTContext {
@@ -39,7 +40,8 @@ static av_cold int sunrast_init(AVCodecContext *avctx) {
 }
 
 static int sunrast_decode_frame(AVCodecContext *avctx, void *data,
-                                int *data_size, AVPacket *avpkt) {
+                                int *got_frame, AVPacket *avpkt)
+{
     const uint8_t *buf       = avpkt->data;
     const uint8_t *buf_end   = avpkt->data + avpkt->size;
     SUNRASTContext * const s = avctx->priv_data;
@@ -90,13 +92,13 @@ static int sunrast_decode_frame(AVCodecContext *avctx, void *data,
 
     switch (depth) {
         case 1:
-            avctx->pix_fmt = PIX_FMT_MONOWHITE;
+            avctx->pix_fmt = AV_PIX_FMT_MONOWHITE;
             break;
         case 8:
-            avctx->pix_fmt = maplength ? PIX_FMT_PAL8 : PIX_FMT_GRAY8;
+            avctx->pix_fmt = maplength ? AV_PIX_FMT_PAL8 : AV_PIX_FMT_GRAY8;
             break;
         case 24:
-            avctx->pix_fmt = (type == RT_FORMAT_RGB) ? PIX_FMT_RGB24 : PIX_FMT_BGR24;
+            avctx->pix_fmt = (type == RT_FORMAT_RGB) ? AV_PIX_FMT_RGB24 : AV_PIX_FMT_BGR24;
             break;
         default:
             av_log(avctx, AV_LOG_ERROR, "invalid depth\n");
@@ -108,7 +110,7 @@ static int sunrast_decode_frame(AVCodecContext *avctx, void *data,
 
     if (w != avctx->width || h != avctx->height)
         avcodec_set_dimensions(avctx, w, h);
-    if ((ret = avctx->get_buffer(avctx, p)) < 0) {
+    if ((ret = ff_get_buffer(avctx, p)) < 0) {
         av_log(avctx, AV_LOG_ERROR, "get_buffer() failed\n");
         return ret;
     }
@@ -180,7 +182,7 @@ static int sunrast_decode_frame(AVCodecContext *avctx, void *data,
     }
 
     *picture   = s->picture;
-    *data_size = sizeof(AVFrame);
+    *got_frame = 1;
 
     return buf - bufstart;
 }

@@ -171,7 +171,7 @@ static void ac3_extract_exponents_c(uint8_t *exp, int32_t *coef, int nb_coefs)
     }
 }
 
-static void ac3_downmix_c(float (*samples)[256], float (*matrix)[2],
+static void ac3_downmix_c(float **samples, float (*matrix)[2],
                           int out_ch, int in_ch, int len)
 {
     int i, j;
@@ -211,6 +211,6 @@ av_cold void ff_ac3dsp_init(AC3DSPContext *c, int bit_exact)
 
     if (ARCH_ARM)
         ff_ac3dsp_init_arm(c, bit_exact);
-    if (HAVE_MMX)
+    if (ARCH_X86)
         ff_ac3dsp_init_x86(c, bit_exact);
 }

@@ -35,7 +35,7 @@
 /* For ff_codec_get_id(). */
 #include "riff.h"
 #include "isom.h"
-#include "rm.h"
+#include "rmsipr.h"
 #include "matroska.h"
 #include "libavcodec/bytestream.h"
 #include "libavcodec/mpeg4audio.h"
@@ -1011,6 +1011,7 @@ static int matroska_decode_buffer(uint8_t** buf, int* buf_size,
         memcpy(pkt_data + header_size, data, isize);
         break;
     }
+#if CONFIG_LZO
     case MATROSKA_TRACK_ENCODING_COMP_LZO:
         do {
             olen = pkt_size *= 3;
@@ -1028,6 +1029,7 @@ static int matroska_decode_buffer(uint8_t** buf, int* buf_size,
         }
         pkt_size -= olen;
         break;
+#endif
 #if CONFIG_ZLIB
     case MATROSKA_TRACK_ENCODING_COMP_ZLIB: {
         z_stream zstream = {0};
@@ -1135,13 +1137,14 @@ static void matroska_fix_ass_packet(MatroskaDemuxContext *matroska,
 
 static int matroska_merge_packets(AVPacket *out, AVPacket *in)
 {
-    void *newdata = av_realloc(out->data, out->size+in->size);
-    if (!newdata)
-        return AVERROR(ENOMEM);
-    out->data = newdata;
-    memcpy(out->data+out->size, in->data, in->size);
-    out->size += in->size;
-    av_destruct_packet(in);
+    int old_size = out->size;
+    int ret = av_grow_packet(out, in->size);
+    if (ret < 0)
+        return ret;
+
+    memcpy(out->data + old_size, in->data, in->size);
+
+    av_free_packet(in);
     av_free(in);
     return 0;
 }
@@ -1436,14 +1439,17 @@ static int matroska_read_header(AVFormatContext *s)
                    "Multiple combined encodings not supported");
         } else if (encodings_list->nb_elem == 1) {
             if (encodings[0].type ||
-                (encodings[0].compression.algo != MATROSKA_TRACK_ENCODING_COMP_HEADERSTRIP &&
+                (
 #if CONFIG_ZLIB
                  encodings[0].compression.algo != MATROSKA_TRACK_ENCODING_COMP_ZLIB &&
 #endif
 #if CONFIG_BZLIB
                  encodings[0].compression.algo != MATROSKA_TRACK_ENCODING_COMP_BZLIB &&
 #endif
-                 encodings[0].compression.algo != MATROSKA_TRACK_ENCODING_COMP_LZO)) {
+#if CONFIG_LZO
+                 encodings[0].compression.algo != MATROSKA_TRACK_ENCODING_COMP_LZO &&
+#endif
+                 encodings[0].compression.algo != MATROSKA_TRACK_ENCODING_COMP_HEADERSTRIP)) {
                 encodings[0].scope = 0;
                 av_log(matroska->ctx, AV_LOG_ERROR,
                        "Unsupported encoding type");
@@ -1738,6 +1744,7 @@ static int matroska_deliver_packet(MatroskaDemuxContext *matroska,
  */
 static void matroska_clear_queue(MatroskaDemuxContext *matroska)
 {
+    matroska->prev_pkt = NULL;
     if (matroska->packets) {
         int n;
         for (n = 0; n < matroska->num_packets; n++) {
@@ -2225,7 +2232,6 @@ static int matroska_read_seek(AVFormatContext *s, int stream_index,
         avio_seek(s->pb, st->index_entries[st->nb_index_entries-1].pos, SEEK_SET);
         matroska->current_id = 0;
         while ((index = av_index_search_timestamp(st, timestamp, flags)) < 0) {
-            matroska->prev_pkt = NULL;
             matroska_clear_queue(matroska);
             if (matroska_parse_cluster(matroska) < 0)
                 break;

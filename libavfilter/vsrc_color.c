@@ -93,19 +93,19 @@ static av_cold void color_uninit(AVFilterContext *ctx)
 
 static int query_formats(AVFilterContext *ctx)
 {
-    static const enum PixelFormat pix_fmts[] = {
-        PIX_FMT_ARGB,         PIX_FMT_RGBA,
-        PIX_FMT_ABGR,         PIX_FMT_BGRA,
-        PIX_FMT_RGB24,        PIX_FMT_BGR24,
+    static const enum AVPixelFormat pix_fmts[] = {
+        AV_PIX_FMT_ARGB,         AV_PIX_FMT_RGBA,
+        AV_PIX_FMT_ABGR,         AV_PIX_FMT_BGRA,
+        AV_PIX_FMT_RGB24,        AV_PIX_FMT_BGR24,
 
-        PIX_FMT_YUV444P,      PIX_FMT_YUV422P,
-        PIX_FMT_YUV420P,      PIX_FMT_YUV411P,
-        PIX_FMT_YUV410P,      PIX_FMT_YUV440P,
-        PIX_FMT_YUVJ444P,     PIX_FMT_YUVJ422P,
-        PIX_FMT_YUVJ420P,     PIX_FMT_YUVJ440P,
-        PIX_FMT_YUVA420P,
+        AV_PIX_FMT_YUV444P,      AV_PIX_FMT_YUV422P,
+        AV_PIX_FMT_YUV420P,      AV_PIX_FMT_YUV411P,
+        AV_PIX_FMT_YUV410P,      AV_PIX_FMT_YUV440P,
+        AV_PIX_FMT_YUVJ444P,     AV_PIX_FMT_YUVJ422P,
+        AV_PIX_FMT_YUVJ420P,     AV_PIX_FMT_YUVJ440P,
+        AV_PIX_FMT_YUVA420P,
 
-        PIX_FMT_NONE
+        AV_PIX_FMT_NONE
     };
 
     ff_set_common_formats(ctx, ff_make_format_list(pix_fmts));
@@ -118,7 +118,7 @@ static int color_config_props(AVFilterLink *inlink)
     ColorContext *color = ctx->priv;
     uint8_t rgba_color[4];
     int is_packed_rgba;
-    const AVPixFmtDescriptor *pix_desc = &av_pix_fmt_descriptors[inlink->format];
+    const AVPixFmtDescriptor *pix_desc = av_pix_fmt_desc_get(inlink->format);
 
     color->hsub = pix_desc->log2_chroma_w;
     color->vsub = pix_desc->log2_chroma_h;
@@ -147,8 +147,6 @@ static int color_request_frame(AVFilterLink *link)
 {
     ColorContext *color = link->src->priv;
     AVFilterBufferRef *picref = ff_get_video_buffer(link, AV_PERM_WRITE, color->w, color->h);
-    AVFilterBufferRef *buf_out;
-    int ret;
 
     if (!picref)
         return AVERROR(ENOMEM);
@@ -157,30 +155,21 @@ static int color_request_frame(AVFilterLink *link)
     picref->pts                 = color->pts++;
     picref->pos                 = -1;
 
-    buf_out = avfilter_ref_buffer(picref, ~0);
-    if (!buf_out) {
-        ret = AVERROR(ENOMEM);
-        goto fail;
-    }
-
-    ret = ff_start_frame(link, buf_out);
-    if (ret < 0)
-        goto fail;
-
     ff_draw_rectangle(picref->data, picref->linesize,
                       color->line, color->line_step, color->hsub, color->vsub,
                       0, 0, color->w, color->h);
-    ret = ff_draw_slice(link, 0, color->h, 1);
-    if (ret < 0)
-        goto fail;
-
-    ret = ff_end_frame(link);
-
-fail:
-    avfilter_unref_buffer(picref);
-
-    return ret;
+    return ff_filter_frame(link, picref);
 }
+
+static const AVFilterPad avfilter_vsrc_color_outputs[] = {
+    {
+        .name          = "default",
+        .type          = AVMEDIA_TYPE_VIDEO,
+        .request_frame = color_request_frame,
+        .config_props  = color_config_props
+    },
+    { NULL }
+};
 
 AVFilter avfilter_vsrc_color = {
     .name        = "color",
@@ -194,9 +183,5 @@ AVFilter avfilter_vsrc_color = {
 
     .inputs    = NULL,
 
-    .outputs   = (const AVFilterPad[]) {{ .name            = "default",
-                                          .type            = AVMEDIA_TYPE_VIDEO,
-                                          .request_frame   = color_request_frame,
-                                          .config_props    = color_config_props },
-                                        { .name = NULL}},
+    .outputs   = avfilter_vsrc_color_outputs,
 };

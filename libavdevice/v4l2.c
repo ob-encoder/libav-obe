@@ -7,7 +7,7 @@
  * (http://v4l2spec.bytesex.org/v4l2spec/capture.c)
  *
  * Thanks to Michael Niedermayer for providing the mapping between
- * V4L2_PIX_FMT_* and PIX_FMT_*
+ * V4L2_PIX_FMT_* and AV_PIX_FMT_*
  *
  *
  * This file is part of Libav.
@@ -84,28 +84,28 @@ struct buff_data {
 };
 
 struct fmt_map {
-    enum PixelFormat ff_fmt;
+    enum AVPixelFormat ff_fmt;
     enum AVCodecID codec_id;
     uint32_t v4l2_fmt;
 };
 
 static struct fmt_map fmt_conversion_table[] = {
     //ff_fmt           codec_id           v4l2_fmt
-    { PIX_FMT_YUV420P, AV_CODEC_ID_RAWVIDEO, V4L2_PIX_FMT_YUV420  },
-    { PIX_FMT_YUV422P, AV_CODEC_ID_RAWVIDEO, V4L2_PIX_FMT_YUV422P },
-    { PIX_FMT_YUYV422, AV_CODEC_ID_RAWVIDEO, V4L2_PIX_FMT_YUYV    },
-    { PIX_FMT_UYVY422, AV_CODEC_ID_RAWVIDEO, V4L2_PIX_FMT_UYVY    },
-    { PIX_FMT_YUV411P, AV_CODEC_ID_RAWVIDEO, V4L2_PIX_FMT_YUV411P },
-    { PIX_FMT_YUV410P, AV_CODEC_ID_RAWVIDEO, V4L2_PIX_FMT_YUV410  },
-    { PIX_FMT_RGB555,  AV_CODEC_ID_RAWVIDEO, V4L2_PIX_FMT_RGB555  },
-    { PIX_FMT_RGB565,  AV_CODEC_ID_RAWVIDEO, V4L2_PIX_FMT_RGB565  },
-    { PIX_FMT_BGR24,   AV_CODEC_ID_RAWVIDEO, V4L2_PIX_FMT_BGR24   },
-    { PIX_FMT_RGB24,   AV_CODEC_ID_RAWVIDEO, V4L2_PIX_FMT_RGB24   },
-    { PIX_FMT_BGRA,    AV_CODEC_ID_RAWVIDEO, V4L2_PIX_FMT_BGR32   },
-    { PIX_FMT_GRAY8,   AV_CODEC_ID_RAWVIDEO, V4L2_PIX_FMT_GREY    },
-    { PIX_FMT_NV12,    AV_CODEC_ID_RAWVIDEO, V4L2_PIX_FMT_NV12    },
-    { PIX_FMT_NONE,    AV_CODEC_ID_MJPEG,    V4L2_PIX_FMT_MJPEG   },
-    { PIX_FMT_NONE,    AV_CODEC_ID_MJPEG,    V4L2_PIX_FMT_JPEG    },
+    { AV_PIX_FMT_YUV420P, AV_CODEC_ID_RAWVIDEO, V4L2_PIX_FMT_YUV420  },
+    { AV_PIX_FMT_YUV422P, AV_CODEC_ID_RAWVIDEO, V4L2_PIX_FMT_YUV422P },
+    { AV_PIX_FMT_YUYV422, AV_CODEC_ID_RAWVIDEO, V4L2_PIX_FMT_YUYV    },
+    { AV_PIX_FMT_UYVY422, AV_CODEC_ID_RAWVIDEO, V4L2_PIX_FMT_UYVY    },
+    { AV_PIX_FMT_YUV411P, AV_CODEC_ID_RAWVIDEO, V4L2_PIX_FMT_YUV411P },
+    { AV_PIX_FMT_YUV410P, AV_CODEC_ID_RAWVIDEO, V4L2_PIX_FMT_YUV410  },
+    { AV_PIX_FMT_RGB555,  AV_CODEC_ID_RAWVIDEO, V4L2_PIX_FMT_RGB555  },
+    { AV_PIX_FMT_RGB565,  AV_CODEC_ID_RAWVIDEO, V4L2_PIX_FMT_RGB565  },
+    { AV_PIX_FMT_BGR24,   AV_CODEC_ID_RAWVIDEO, V4L2_PIX_FMT_BGR24   },
+    { AV_PIX_FMT_RGB24,   AV_CODEC_ID_RAWVIDEO, V4L2_PIX_FMT_RGB24   },
+    { AV_PIX_FMT_BGRA,    AV_CODEC_ID_RAWVIDEO, V4L2_PIX_FMT_BGR32   },
+    { AV_PIX_FMT_GRAY8,   AV_CODEC_ID_RAWVIDEO, V4L2_PIX_FMT_GREY    },
+    { AV_PIX_FMT_NV12,    AV_CODEC_ID_RAWVIDEO, V4L2_PIX_FMT_NV12    },
+    { AV_PIX_FMT_NONE,    AV_CODEC_ID_MJPEG,    V4L2_PIX_FMT_MJPEG   },
+    { AV_PIX_FMT_NONE,    AV_CODEC_ID_MJPEG,    V4L2_PIX_FMT_JPEG    },
 };
 
 static int device_open(AVFormatContext *ctx)
@@ -220,14 +220,14 @@ static int first_field(int fd)
     return 1;
 }
 
-static uint32_t fmt_ff2v4l(enum PixelFormat pix_fmt, enum AVCodecID codec_id)
+static uint32_t fmt_ff2v4l(enum AVPixelFormat pix_fmt, enum AVCodecID codec_id)
 {
     int i;
 
     for (i = 0; i < FF_ARRAY_ELEMS(fmt_conversion_table); i++) {
         if ((codec_id == AV_CODEC_ID_NONE ||
              fmt_conversion_table[i].codec_id == codec_id) &&
-            (pix_fmt == PIX_FMT_NONE ||
+            (pix_fmt == AV_PIX_FMT_NONE ||
              fmt_conversion_table[i].ff_fmt == pix_fmt)) {
             return fmt_conversion_table[i].v4l2_fmt;
         }
@@ -236,7 +236,7 @@ static uint32_t fmt_ff2v4l(enum PixelFormat pix_fmt, enum AVCodecID codec_id)
     return 0;
 }
 
-static enum PixelFormat fmt_v4l2ff(uint32_t v4l2_fmt, enum AVCodecID codec_id)
+static enum AVPixelFormat fmt_v4l2ff(uint32_t v4l2_fmt, enum AVCodecID codec_id)
 {
     int i;
 
@@ -247,7 +247,7 @@ static enum PixelFormat fmt_v4l2ff(uint32_t v4l2_fmt, enum AVCodecID codec_id)
         }
     }
 
-    return PIX_FMT_NONE;
+    return AV_PIX_FMT_NONE;
 }
 
 static enum AVCodecID fmt_v4l2codec(uint32_t v4l2_fmt)
@@ -295,7 +295,7 @@ static void list_formats(AVFormatContext *ctx, int fd, int type)
 
     while(!ioctl(fd, VIDIOC_ENUM_FMT, &vfd)) {
         enum AVCodecID codec_id = fmt_v4l2codec(vfd.pixelformat);
-        enum PixelFormat pix_fmt = fmt_v4l2ff(vfd.pixelformat, codec_id);
+        enum AVPixelFormat pix_fmt = fmt_v4l2ff(vfd.pixelformat, codec_id);
 
         vfd.index++;
 
@@ -460,7 +460,12 @@ static int mmap_read_frame(AVFormatContext *ctx, AVPacket *pkt)
 
         return AVERROR(errno);
     }
-    assert (buf.index < s->buffers);
+
+    if (buf.index >= s->buffers) {
+        av_log(ctx, AV_LOG_ERROR, "Invalid buffer index received.\n");
+        return AVERROR(EINVAL);
+    }
+
     if (s->frame_size > 0 && buf.bytesused != s->frame_size) {
         av_log(ctx, AV_LOG_ERROR,
                "The v4l2 frame is %d bytes, but %d bytes are expected\n",
@@ -634,18 +639,18 @@ static int v4l2_set_parameters(AVFormatContext *s1)
             return AVERROR(errno);
         }
     }
-    s1->streams[0]->codec->time_base.den = tpf->denominator;
-    s1->streams[0]->codec->time_base.num = tpf->numerator;
+    s1->streams[0]->avg_frame_rate.num = tpf->denominator;
+    s1->streams[0]->avg_frame_rate.den = tpf->numerator;
 
     s->timeout = 100 +
-        av_rescale_q(1, s1->streams[0]->codec->time_base,
+        av_rescale_q(1, s1->streams[0]->avg_frame_rate,
                         (AVRational){1, 1000});
 
     return 0;
 }
 
 static uint32_t device_try_init(AVFormatContext *s1,
-                                enum PixelFormat pix_fmt,
+                                enum AVPixelFormat pix_fmt,
                                 int *width,
                                 int *height,
                                 enum AVCodecID *codec_id)
@@ -684,24 +689,19 @@ static int v4l2_read_header(AVFormatContext *s1)
     int res = 0;
     uint32_t desired_format;
     enum AVCodecID codec_id;
-    enum PixelFormat pix_fmt = PIX_FMT_NONE;
+    enum AVPixelFormat pix_fmt = AV_PIX_FMT_NONE;
 
     st = avformat_new_stream(s1, NULL);
-    if (!st) {
-        res = AVERROR(ENOMEM);
-        goto out;
-    }
+    if (!st)
+        return AVERROR(ENOMEM);
 
     s->fd = device_open(s1);
-    if (s->fd < 0) {
-        res = s->fd;
-        goto out;
-    }
+    if (s->fd < 0)
+        return s->fd;
 
     if (s->list_format) {
         list_formats(s1, s->fd, s->list_format);
-        res = AVERROR_EXIT;
-        goto out;
+        return AVERROR_EXIT;
     }
 
     avpriv_set_pts_info(st, 64, 1, 1000000); /* 64 bits pts in us */
@@ -710,7 +710,7 @@ static int v4l2_read_header(AVFormatContext *s1)
         (res = av_parse_video_size(&s->width, &s->height, s->video_size)) < 0) {
         av_log(s1, AV_LOG_ERROR, "Could not parse video size '%s'.\n",
                s->video_size);
-        goto out;
+        return res;
     }
 
     if (s->pixel_format) {
@@ -721,12 +721,11 @@ static int v4l2_read_header(AVFormatContext *s1)
 
         pix_fmt = av_get_pix_fmt(s->pixel_format);
 
-        if (pix_fmt == PIX_FMT_NONE && !codec) {
+        if (pix_fmt == AV_PIX_FMT_NONE && !codec) {
             av_log(s1, AV_LOG_ERROR, "No such input format: %s.\n",
                    s->pixel_format);
 
-            res = AVERROR(EINVAL);
-            goto out;
+            return AVERROR(EINVAL);
         }
     }
 
@@ -739,8 +738,7 @@ static int v4l2_read_header(AVFormatContext *s1)
         if (ioctl(s->fd, VIDIOC_G_FMT, &fmt) < 0) {
             av_log(s1, AV_LOG_ERROR, "ioctl(VIDIOC_G_FMT): %s\n",
                    strerror(errno));
-            res = AVERROR(errno);
-            goto out;
+            return AVERROR(errno);
         }
 
         s->width  = fmt.fmt.pix.width;
@@ -756,17 +754,16 @@ static int v4l2_read_header(AVFormatContext *s1)
                "codec_id %d, pix_fmt %d.\n", s1->video_codec_id, pix_fmt);
         close(s->fd);
 
-        res = AVERROR(EIO);
-        goto out;
+        return AVERROR(EIO);
     }
 
     if ((res = av_image_check_size(s->width, s->height, 0, s1) < 0))
-        goto out;
+        return res;
 
     s->frame_format = desired_format;
 
     if ((res = v4l2_set_parameters(s1) < 0))
-        goto out;
+        return res;
 
     st->codec->pix_fmt = fmt_v4l2ff(desired_format, codec_id);
     s->frame_size =
@@ -775,7 +772,7 @@ static int v4l2_read_header(AVFormatContext *s1)
     if ((res = mmap_init(s1)) ||
         (res = mmap_start(s1)) < 0) {
         close(s->fd);
-        goto out;
+        return res;
     }
 
     s->top_field_first = first_field(s->fd);
@@ -787,10 +784,9 @@ static int v4l2_read_header(AVFormatContext *s1)
             avcodec_pix_fmt_to_codec_tag(st->codec->pix_fmt);
     st->codec->width = s->width;
     st->codec->height = s->height;
-    st->codec->bit_rate = s->frame_size * 1/av_q2d(st->codec->time_base) * 8;
+    st->codec->bit_rate = s->frame_size * av_q2d(st->avg_frame_rate) * 8;
 
-out:
-    return res;
+    return 0;
 }
 
 static int v4l2_read_packet(AVFormatContext *s1, AVPacket *pkt)

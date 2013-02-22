@@ -28,6 +28,7 @@
 #include "avcodec.h"
 #include "bytestream.h"
 #include "cga_data.h"
+#include "internal.h"
 
 typedef struct PicContext {
     AVFrame frame;
@@ -97,7 +98,7 @@ static const uint8_t cga_mode45_index[6][4] = {
 };
 
 static int decode_frame(AVCodecContext *avctx,
-                        void *data, int *data_size,
+                        void *data, int *got_frame,
                         AVPacket *avpkt)
 {
     PicContext *s = avctx->priv_data;
@@ -122,7 +123,7 @@ static int decode_frame(AVCodecContext *avctx,
     bpp            = bits_per_plane * s->nb_planes;
     if (bits_per_plane > 8 || bpp < 1 || bpp > 32) {
         av_log_ask_for_sample(s, "unsupported bit depth\n");
-        return AVERROR_INVALIDDATA;
+        return AVERROR_PATCHWELCOME;
     }
 
     if (bytestream2_peek_byte(&s->g) == 0xFF) {
@@ -136,7 +137,7 @@ static int decode_frame(AVCodecContext *avctx,
         esize = 0;
     }
 
-    avctx->pix_fmt = PIX_FMT_PAL8;
+    avctx->pix_fmt = AV_PIX_FMT_PAL8;
 
     if (s->width != avctx->width && s->height != avctx->height) {
         if (av_image_check_size(s->width, s->height, 0, avctx) < 0)
@@ -146,7 +147,7 @@ static int decode_frame(AVCodecContext *avctx,
             avctx->release_buffer(avctx, &s->frame);
     }
 
-    if (avctx->get_buffer(avctx, &s->frame) < 0){
+    if (ff_get_buffer(avctx, &s->frame) < 0){
         av_log(avctx, AV_LOG_ERROR, "get_buffer() failed\n");
         return -1;
     }
@@ -237,7 +238,7 @@ static int decode_frame(AVCodecContext *avctx,
         return avpkt->size;
     }
 
-    *data_size = sizeof(AVFrame);
+    *got_frame      = 1;
     *(AVFrame*)data = s->frame;
     return avpkt->size;
 }

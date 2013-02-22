@@ -254,14 +254,18 @@ static int end_frame(AVCodecContext *avctx)
 {
     VC1Context *v = avctx->priv_data;
     struct dxva2_picture_context *ctx_pic = v->s.current_picture_ptr->f.hwaccel_picture_private;
+    int ret;
 
     if (ctx_pic->bitstream_size <= 0)
         return -1;
 
-    return ff_dxva2_common_end_frame(avctx, &v->s,
-                                     &ctx_pic->pp, sizeof(ctx_pic->pp),
-                                     NULL, 0,
-                                     commit_bitstream_and_slice_buffer);
+    ret = ff_dxva2_common_end_frame(avctx, v->s.current_picture_ptr,
+                                    &ctx_pic->pp, sizeof(ctx_pic->pp),
+                                    NULL, 0,
+                                    commit_bitstream_and_slice_buffer);
+    if (!ret)
+        ff_mpeg_draw_horiz_band(&v->s, 0, avctx->height);
+    return ret;
 }
 
 #if CONFIG_WMV3_DXVA2_HWACCEL
@@ -269,7 +273,7 @@ AVHWAccel ff_wmv3_dxva2_hwaccel = {
     .name           = "wmv3_dxva2",
     .type           = AVMEDIA_TYPE_VIDEO,
     .id             = AV_CODEC_ID_WMV3,
-    .pix_fmt        = PIX_FMT_DXVA2_VLD,
+    .pix_fmt        = AV_PIX_FMT_DXVA2_VLD,
     .start_frame    = start_frame,
     .decode_slice   = decode_slice,
     .end_frame      = end_frame,
@@ -281,7 +285,7 @@ AVHWAccel ff_vc1_dxva2_hwaccel = {
     .name           = "vc1_dxva2",
     .type           = AVMEDIA_TYPE_VIDEO,
     .id             = AV_CODEC_ID_VC1,
-    .pix_fmt        = PIX_FMT_DXVA2_VLD,
+    .pix_fmt        = AV_PIX_FMT_DXVA2_VLD,
     .start_frame    = start_frame,
     .decode_slice   = decode_slice,
     .end_frame      = end_frame,

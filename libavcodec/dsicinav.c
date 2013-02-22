@@ -24,8 +24,10 @@
  * Delphine Software International CIN audio/video decoders
  */
 
+#include "libavutil/channel_layout.h"
 #include "avcodec.h"
 #include "bytestream.h"
+#include "internal.h"
 #include "mathops.h"
 
 
@@ -44,7 +46,6 @@ typedef struct CinVideoContext {
 } CinVideoContext;
 
 typedef struct CinAudioContext {
-    AVFrame frame;
     int initial_decode_frame;
     int delta;
 } CinAudioContext;
@@ -93,7 +94,7 @@ static av_cold int cinvideo_decode_init(AVCodecContext *avctx)
     unsigned int i;
 
     cin->avctx = avctx;
-    avctx->pix_fmt = PIX_FMT_PAL8;
+    avctx->pix_fmt = AV_PIX_FMT_PAL8;
 
     cin->frame.data[0] = NULL;
 
@@ -199,7 +200,7 @@ static void cin_decode_rle(const unsigned char *src, int src_size, unsigned char
 }
 
 static int cinvideo_decode_frame(AVCodecContext *avctx,
-                                 void *data, int *data_size,
+                                 void *data, int *got_frame,
                                  AVPacket *avpkt)
 {
     const uint8_t *buf = avpkt->data;
@@ -295,7 +296,7 @@ static int cinvideo_decode_frame(AVCodecContext *avctx,
 
     FFSWAP(uint8_t *, cin->bitmap_table[CIN_CUR_BMP], cin->bitmap_table[CIN_PRE_BMP]);
 
-    *data_size = sizeof(AVFrame);
+    *got_frame = 1;
     *(AVFrame *)data = cin->frame;
 
     return buf_size;
@@ -319,17 +320,11 @@ static av_cold int cinaudio_decode_init(AVCodecContext *avctx)
 {
     CinAudioContext *cin = avctx->priv_data;
 
-    if (avctx->channels != 1) {
-        av_log_ask_for_sample(avctx, "Number of channels is not supported\n");
-        return AVERROR_PATCHWELCOME;
-    }
-
     cin->initial_decode_frame = 1;
-    cin->delta = 0;
-    avctx->sample_fmt = AV_SAMPLE_FMT_S16;
-
-    avcodec_get_frame_defaults(&cin->frame);
-    avctx->coded_frame = &cin->frame;
+    cin->delta                = 0;
+    avctx->sample_fmt         = AV_SAMPLE_FMT_S16;
+    avctx->channels           = 1;
+    avctx->channel_layout     = AV_CH_LAYOUT_MONO;
 
     return 0;
 }
@@ -337,6 +332,7 @@ static av_cold int cinaudio_decode_init(AVCodecContext *avctx)
 static int cinaudio_decode_frame(AVCodecContext *avctx, void *data,
                                  int *got_frame_ptr, AVPacket *avpkt)
 {
+    AVFrame *frame     = data;
     const uint8_t *buf = avpkt->data;
     CinAudioContext *cin = avctx->priv_data;
     const uint8_t *buf_end = buf + avpkt->size;
@@ -344,12 +340,12 @@ static int cinaudio_decode_frame(AVCodecContext *avctx, void *data,
     int delta, ret;
 
     /* get output buffer */
-    cin->frame.nb_samples = avpkt->size - cin->initial_decode_frame;
-    if ((ret = avctx->get_buffer(avctx, &cin->frame)) < 0) {
+    frame->nb_samples = avpkt->size - cin->initial_decode_frame;
+    if ((ret = ff_get_buffer(avctx, frame)) < 0) {
         av_log(avctx, AV_LOG_ERROR, "get_buffer() failed\n");
         return ret;
     }
-    samples = (int16_t *)cin->frame.data[0];
+    samples = (int16_t *)frame->data[0];
 
     delta = cin->delta;
     if (cin->initial_decode_frame) {
@@ -365,8 +361,7 @@ static int cinaudio_decode_frame(AVCodecContext *avctx, void *data,
     }
     cin->delta = delta;
 
-    *got_frame_ptr   = 1;
-    *(AVFrame *)data = cin->frame;
+    *got_frame_ptr = 1;
 
     return avpkt->size;
 }

@@ -65,13 +65,12 @@ static av_cold int init(AVFilterContext *ctx, const char *args)
     return 0;
 }
 
-static int start_frame(AVFilterLink *link, AVFilterBufferRef *picref)
+static int filter_frame(AVFilterLink *link, AVFilterBufferRef *frame)
 {
     AspectContext *aspect = link->dst->priv;
 
-    picref->video->pixel_aspect = aspect->aspect;
-    link->cur_buf = NULL;
-    return ff_start_frame(link->dst->outputs[0], picref);
+    frame->video->pixel_aspect = aspect->aspect;
+    return ff_filter_frame(link->dst->outputs[0], frame);
 }
 
 #if CONFIG_SETDAR_FILTER
@@ -93,6 +92,25 @@ static int setdar_config_props(AVFilterLink *inlink)
     return 0;
 }
 
+static const AVFilterPad avfilter_vf_setdar_inputs[] = {
+    {
+        .name             = "default",
+        .type             = AVMEDIA_TYPE_VIDEO,
+        .config_props     = setdar_config_props,
+        .get_video_buffer = ff_null_get_video_buffer,
+        .filter_frame     = filter_frame,
+    },
+    { NULL }
+};
+
+static const AVFilterPad avfilter_vf_setdar_outputs[] = {
+    {
+        .name = "default",
+        .type = AVMEDIA_TYPE_VIDEO,
+    },
+    { NULL }
+};
+
 AVFilter avfilter_vf_setdar = {
     .name      = "setdar",
     .description = NULL_IF_CONFIG_SMALL("Set the frame display aspect ratio."),
@@ -101,17 +119,9 @@ AVFilter avfilter_vf_setdar = {
 
     .priv_size = sizeof(AspectContext),
 
-    .inputs    = (const AVFilterPad[]) {{ .name             = "default",
-                                          .type             = AVMEDIA_TYPE_VIDEO,
-                                          .config_props     = setdar_config_props,
-                                          .get_video_buffer = ff_null_get_video_buffer,
-                                          .start_frame      = start_frame,
-                                          .end_frame        = ff_null_end_frame },
-                                        { .name = NULL}},
+    .inputs    = avfilter_vf_setdar_inputs,
 
-    .outputs   = (const AVFilterPad[]) {{ .name             = "default",
-                                          .type             = AVMEDIA_TYPE_VIDEO, },
-                                        { .name = NULL}},
+    .outputs   = avfilter_vf_setdar_outputs,
 };
 #endif /* CONFIG_SETDAR_FILTER */
 
@@ -126,6 +136,25 @@ static int setsar_config_props(AVFilterLink *inlink)
     return 0;
 }
 
+static const AVFilterPad avfilter_vf_setsar_inputs[] = {
+    {
+        .name             = "default",
+        .type             = AVMEDIA_TYPE_VIDEO,
+        .config_props     = setsar_config_props,
+        .get_video_buffer = ff_null_get_video_buffer,
+        .filter_frame     = filter_frame,
+    },
+    { NULL }
+};
+
+static const AVFilterPad avfilter_vf_setsar_outputs[] = {
+    {
+        .name = "default",
+        .type = AVMEDIA_TYPE_VIDEO,
+    },
+    { NULL }
+};
+
 AVFilter avfilter_vf_setsar = {
     .name      = "setsar",
     .description = NULL_IF_CONFIG_SMALL("Set the pixel sample aspect ratio."),
@@ -134,16 +163,8 @@ AVFilter avfilter_vf_setsar = {
 
     .priv_size = sizeof(AspectContext),
 
-    .inputs    = (const AVFilterPad[]) {{ .name             = "default",
-                                          .type             = AVMEDIA_TYPE_VIDEO,
-                                          .config_props     = setsar_config_props,
-                                          .get_video_buffer = ff_null_get_video_buffer,
-                                          .start_frame      = start_frame,
-                                          .end_frame        = ff_null_end_frame },
-                                        { .name = NULL}},
+    .inputs    = avfilter_vf_setsar_inputs,
 
-    .outputs   = (const AVFilterPad[]) {{ .name             = "default",
-                                          .type             = AVMEDIA_TYPE_VIDEO, },
-                                        { .name = NULL}},
+    .outputs   = avfilter_vf_setsar_outputs,
 };
 #endif /* CONFIG_SETSAR_FILTER */

@@ -19,10 +19,12 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include "libavutil/channel_layout.h"
 #include "libavutil/common.h"
 #include "avformat.h"
 #include "internal.h"
 #include "gxf.h"
+#include "libavcodec/mpeg12data.h"
 
 struct gxf_stream_info {
     int64_t first_field;
@@ -118,6 +120,7 @@ static int get_sindex(AVFormatContext *s, int id, int format) {
             st->codec->codec_type = AVMEDIA_TYPE_AUDIO;
             st->codec->codec_id = AV_CODEC_ID_PCM_S24LE;
             st->codec->channels = 1;
+            st->codec->channel_layout = AV_CH_LAYOUT_MONO;
             st->codec->sample_rate = 48000;
             st->codec->bit_rate = 3 * 1 * 48000 * 8;
             st->codec->block_align = 3 * 1;
@@ -127,6 +130,7 @@ static int get_sindex(AVFormatContext *s, int id, int format) {
             st->codec->codec_type = AVMEDIA_TYPE_AUDIO;
             st->codec->codec_id = AV_CODEC_ID_PCM_S16LE;
             st->codec->channels = 1;
+            st->codec->channel_layout = AV_CH_LAYOUT_MONO;
             st->codec->sample_rate = 48000;
             st->codec->bit_rate = 2 * 1 * 48000 * 8;
             st->codec->block_align = 2 * 1;
@@ -136,6 +140,7 @@ static int get_sindex(AVFormatContext *s, int id, int format) {
             st->codec->codec_type = AVMEDIA_TYPE_AUDIO;
             st->codec->codec_id = AV_CODEC_ID_AC3;
             st->codec->channels = 2;
+            st->codec->channel_layout = AV_CH_LAYOUT_STEREO;
             st->codec->sample_rate = 48000;
             break;
         // timecode tracks:
@@ -179,15 +184,26 @@ static void gxf_material_tags(AVIOContext *pb, int *len, struct gxf_stream_info 
     }
 }
 
+static const AVRational frame_rate_tab[] = {
+    {   60,    1},
+    {60000, 1001},
+    {   50,    1},
+    {   30,    1},
+    {30000, 1001},
+    {   25,    1},
+    {   24,    1},
+    {24000, 1001},
+    {    0,    0},
+};
+
 /**
  * @brief convert fps tag value to AVRational fps
  * @param fps fps value from tag
  * @return fps as AVRational, or 0 / 0 if unknown
  */
 static AVRational fps_tag2avr(int32_t fps) {
-    extern const AVRational avpriv_frame_rate_tab[];
     if (fps < 1 || fps > 9) fps = 9;
-    return avpriv_frame_rate_tab[9 - fps]; // values have opposite order
+    return frame_rate_tab[fps - 1];
 }
 
 /**

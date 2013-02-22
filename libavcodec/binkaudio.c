@@ -28,6 +28,7 @@
  *  http://wiki.multimedia.cx/index.php?title=Bink_Audio
  */
 
+#include "libavutil/channel_layout.h"
 #include "avcodec.h"
 #define BITSTREAM_READER_LE
 #include "get_bits.h"
@@ -35,6 +36,7 @@
 #include "dct.h"
 #include "rdft.h"
 #include "fmtconvert.h"
+#include "internal.h"
 #include "libavutil/intfloat.h"
 
 extern const uint16_t ff_wma_critical_freqs[25];
@@ -45,7 +47,6 @@ static float quant_table[96];
 #define BINK_BLOCK_MAX_SIZE (MAX_CHANNELS << 11)
 
 typedef struct {
-    AVFrame frame;
     GetBitContext gb;
     int version_b;          ///< Bink version 'b'
     int first;
@@ -87,6 +88,8 @@ static av_cold int decode_init(AVCodecContext *avctx)
         av_log(avctx, AV_LOG_ERROR, "too many channels: %d\n", avctx->channels);
         return -1;
     }
+    avctx->channel_layout = avctx->channels == 1 ? AV_CH_LAYOUT_MONO :
+                                                   AV_CH_LAYOUT_STEREO;
 
     s->version_b = avctx->extradata && avctx->extradata[3] == 'b';
 
@@ -138,9 +141,6 @@ static av_cold int decode_init(AVCodecContext *avctx)
         ff_dct_init(&s->trans.dct, frame_len_bits, DCT_III);
     else
         return -1;
-
-    avcodec_get_frame_defaults(&s->frame);
-    avctx->coded_frame = &s->frame;
 
     return 0;
 }
@@ -290,6 +290,7 @@ static int decode_frame(AVCodecContext *avctx, void *data,
                         int *got_frame_ptr, AVPacket *avpkt)
 {
     BinkAudioContext *s = avctx->priv_data;
+    AVFrame *frame      = data;
     GetBitContext *gb = &s->gb;
     int ret, consumed = 0;
 
@@ -317,22 +318,21 @@ static int decode_frame(AVCodecContext *avctx, void *data,
     }
 
     /* get output buffer */
-    s->frame.nb_samples = s->frame_len;
-    if ((ret = avctx->get_buffer(avctx, &s->frame)) < 0) {
+    frame->nb_samples = s->frame_len;
+    if ((ret = ff_get_buffer(avctx, frame)) < 0) {
         av_log(avctx, AV_LOG_ERROR, "get_buffer() failed\n");
         return ret;
     }
 
-    if (decode_block(s, (float **)s->frame.extended_data,
+    if (decode_block(s, (float **)frame->extended_data,
                      avctx->codec->id == AV_CODEC_ID_BINKAUDIO_DCT)) {
         av_log(avctx, AV_LOG_ERROR, "Incomplete packet\n");
         return AVERROR_INVALIDDATA;
     }
     get_bits_align32(gb);
 
-    s->frame.nb_samples = s->block_size / avctx->channels;
-    *got_frame_ptr   = 1;
-    *(AVFrame *)data = s->frame;
+    frame->nb_samples = s->block_size / avctx->channels;
+    *got_frame_ptr    = 1;
 
     return consumed;
 }

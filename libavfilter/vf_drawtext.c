@@ -46,8 +46,6 @@
 #include "internal.h"
 #include "video.h"
 
-#undef time
-
 #include <ft2build.h>
 #include <freetype/config/ftheader.h>
 #include FT_FREETYPE_H
@@ -263,7 +261,7 @@ static int load_glyph(AVFilterContext *ctx, Glyph **glyph_ptr, uint32_t code)
     FT_Glyph_Get_CBox(*glyph->glyph, ft_glyph_bbox_pixels, &glyph->bbox);
 
     /* cache the newly created glyph */
-    if (!(node = av_mallocz(av_tree_node_size))) {
+    if (!(node = av_tree_node_alloc())) {
         ret = AVERROR(ENOMEM);
         goto error;
     }
@@ -389,14 +387,14 @@ static av_cold int init(AVFilterContext *ctx, const char *args)
 
 static int query_formats(AVFilterContext *ctx)
 {
-    static const enum PixelFormat pix_fmts[] = {
-        PIX_FMT_ARGB,    PIX_FMT_RGBA,
-        PIX_FMT_ABGR,    PIX_FMT_BGRA,
-        PIX_FMT_RGB24,   PIX_FMT_BGR24,
-        PIX_FMT_YUV420P, PIX_FMT_YUV444P,
-        PIX_FMT_YUV422P, PIX_FMT_YUV411P,
-        PIX_FMT_YUV410P, PIX_FMT_YUV440P,
-        PIX_FMT_NONE
+    static const enum AVPixelFormat pix_fmts[] = {
+        AV_PIX_FMT_ARGB,    AV_PIX_FMT_RGBA,
+        AV_PIX_FMT_ABGR,    AV_PIX_FMT_BGRA,
+        AV_PIX_FMT_RGB24,   AV_PIX_FMT_BGR24,
+        AV_PIX_FMT_YUV420P, AV_PIX_FMT_YUV444P,
+        AV_PIX_FMT_YUV422P, AV_PIX_FMT_YUV411P,
+        AV_PIX_FMT_YUV410P, AV_PIX_FMT_YUV440P,
+        AV_PIX_FMT_NONE
     };
 
     ff_set_common_formats(ctx, ff_make_format_list(pix_fmts));
@@ -569,7 +567,7 @@ static int config_input(AVFilterLink *inlink)
 {
     AVFilterContext *ctx  = inlink->dst;
     DrawTextContext *dtext = ctx->priv;
-    const AVPixFmtDescriptor *pix_desc = &av_pix_fmt_descriptors[inlink->format];
+    const AVPixFmtDescriptor *pix_desc = av_pix_fmt_desc_get(inlink->format);
     int ret;
 
     dtext->hsub = pix_desc->log2_chroma_w;
@@ -792,11 +790,6 @@ static int draw_text(AVFilterContext *ctx, AVFilterBufferRef *picref,
     return 0;
 }
 
-static int null_draw_slice(AVFilterLink *link, int y, int h, int slice_dir)
-{
-    return 0;
-}
-
 static inline int normalize_double(int *n, double d)
 {
     int ret = 0;
@@ -812,20 +805,20 @@ static inline int normalize_double(int *n, double d)
     return ret;
 }
 
-static int start_frame(AVFilterLink *inlink, AVFilterBufferRef *inpicref)
+static int filter_frame(AVFilterLink *inlink, AVFilterBufferRef *frame)
 {
     AVFilterContext *ctx = inlink->dst;
     DrawTextContext *dtext = ctx->priv;
-    AVFilterBufferRef *buf_out;
     int ret = 0;
 
     if ((ret = dtext_prepare_text(ctx)) < 0) {
         av_log(ctx, AV_LOG_ERROR, "Can't draw text\n");
+        avfilter_unref_bufferp(&frame);
         return ret;
     }
 
-    dtext->var_values[VAR_T] = inpicref->pts == AV_NOPTS_VALUE ?
-        NAN : inpicref->pts * av_q2d(inlink->time_base);
+    dtext->var_values[VAR_T] = frame->pts == AV_NOPTS_VALUE ?
+        NAN : frame->pts * av_q2d(inlink->time_base);
     dtext->var_values[VAR_X] =
         av_expr_eval(dtext->x_pexpr, dtext->var_values, &dtext->prng);
     dtext->var_values[VAR_Y] =
@@ -854,30 +847,35 @@ static int start_frame(AVFilterLink *inlink, AVFilterBufferRef *inpicref)
             (int)dtext->var_values[VAR_N], dtext->var_values[VAR_T],
             dtext->x, dtext->y, dtext->x+dtext->w, dtext->y+dtext->h);
 
-    buf_out = avfilter_ref_buffer(inpicref, ~0);
-    if (!buf_out)
-        return AVERROR(ENOMEM);
-
-    return ff_start_frame(inlink->dst->outputs[0], buf_out);
-}
-
-static int end_frame(AVFilterLink *inlink)
-{
-    AVFilterLink *outlink = inlink->dst->outputs[0];
-    AVFilterBufferRef *picref = inlink->cur_buf;
-    DrawTextContext *dtext = inlink->dst->priv;
-    int ret;
-
     if (dtext->draw)
-        draw_text(inlink->dst, picref, picref->video->w, picref->video->h);
+        draw_text(inlink->dst, frame, frame->video->w, frame->video->h);
 
     dtext->var_values[VAR_N] += 1.0;
 
-    if ((ret = ff_draw_slice(outlink, 0, picref->video->h, 1)) < 0 ||
-        (ret = ff_end_frame(outlink)) < 0)
-        return ret;
-    return 0;
+    return ff_filter_frame(inlink->dst->outputs[0], frame);
 }
+
+static const AVFilterPad avfilter_vf_drawtext_inputs[] = {
+    {
+        .name             = "default",
+        .type             = AVMEDIA_TYPE_VIDEO,
+        .get_video_buffer = ff_null_get_video_buffer,
+        .filter_frame     = filter_frame,
+        .config_props     = config_input,
+        .min_perms        = AV_PERM_WRITE |
+                            AV_PERM_READ,
+        .rej_perms = AV_PERM_PRESERVE
+    },
+    { NULL }
+};
+
+static const AVFilterPad avfilter_vf_drawtext_outputs[] = {
+    {
+        .name = "default",
+        .type = AVMEDIA_TYPE_VIDEO,
+    },
+    { NULL }
+};
 
 AVFilter avfilter_vf_drawtext = {
     .name          = "drawtext",
@@ -887,18 +885,6 @@ AVFilter avfilter_vf_drawtext = {
     .uninit        = uninit,
     .query_formats = query_formats,
 
-    .inputs    = (const AVFilterPad[]) {{ .name             = "default",
-                                          .type             = AVMEDIA_TYPE_VIDEO,
-                                          .get_video_buffer = ff_null_get_video_buffer,
-                                          .start_frame      = start_frame,
-                                          .draw_slice       = null_draw_slice,
-                                          .end_frame        = end_frame,
-                                          .config_props     = config_input,
-                                          .min_perms        = AV_PERM_WRITE |
-                                                              AV_PERM_READ,
-                                          .rej_perms        = AV_PERM_PRESERVE },
-                                        { .name = NULL}},
-    .outputs   = (const AVFilterPad[]) {{ .name             = "default",
-                                          .type             = AVMEDIA_TYPE_VIDEO, },
-                                        { .name = NULL}},
+    .inputs    = avfilter_vf_drawtext_inputs,
+    .outputs   = avfilter_vf_drawtext_outputs,
 };

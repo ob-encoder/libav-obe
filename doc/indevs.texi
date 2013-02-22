@@ -13,7 +13,7 @@ You can disable all the input devices using the configure option
 option "--enable-indev=@var{INDEV}", or you can disable a particular
 input device using the option "--disable-indev=@var{INDEV}".
 
-The option "-formats" of the ff* tools will display the list of
+The option "-formats" of the av* tools will display the list of
 supported input devices (amongst the demuxers).
 
 A description of the currently available input devices follows.
@@ -300,7 +300,7 @@ The filename passed as input has the syntax:
 
 @var{hostname}:@var{display_number}.@var{screen_number} specifies the
 X11 display name of the screen to grab from. @var{hostname} can be
-ommitted, and defaults to "localhost". The environment variable
+omitted, and defaults to "localhost". The environment variable
 @env{DISPLAY} contains the default display name.
 
 @var{x_offset} and @var{y_offset} specify the offsets of the grabbed

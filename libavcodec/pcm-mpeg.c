@@ -24,9 +24,10 @@
  * PCM codecs for encodings found in MPEG streams (DVD/Blu-ray)
  */
 
-#include "libavutil/audioconvert.h"
+#include "libavutil/channel_layout.h"
 #include "avcodec.h"
 #include "bytestream.h"
+#include "internal.h"
 
 /*
  * Channel Mapping according to
@@ -109,37 +110,23 @@ static int pcm_bluray_parse_header(AVCodecContext *avctx,
         return -1;
     }
 
-    avctx->bit_rate = avctx->channels * avctx->sample_rate *
+    avctx->bit_rate = FFALIGN(avctx->channels, 2) * avctx->sample_rate *
                       avctx->bits_per_coded_sample;
 
     if (avctx->debug & FF_DEBUG_PICT_INFO)
         av_dlog(avctx,
-                "pcm_bluray_parse_header: %d channels, %d bits per sample, %d kHz, %d kbit\n",
+                "pcm_bluray_parse_header: %d channels, %d bits per sample, %d Hz, %d bit/s\n",
                 avctx->channels, avctx->bits_per_coded_sample,
                 avctx->sample_rate, avctx->bit_rate);
-    return 0;
-}
-
-typedef struct PCMBRDecode {
-    AVFrame frame;
-} PCMBRDecode;
-
-static av_cold int pcm_bluray_decode_init(AVCodecContext * avctx)
-{
-    PCMBRDecode *s = avctx->priv_data;
-
-    avcodec_get_frame_defaults(&s->frame);
-    avctx->coded_frame = &s->frame;
-
     return 0;
 }
 
 static int pcm_bluray_decode_frame(AVCodecContext *avctx, void *data,
                                    int *got_frame_ptr, AVPacket *avpkt)
 {
+    AVFrame *frame     = data;
     const uint8_t *src = avpkt->data;
     int buf_size = avpkt->size;
-    PCMBRDecode *s = avctx->priv_data;
     GetByteContext gb;
     int num_source_channels, channel, retval;
     int sample_size, samples;
@@ -164,13 +151,13 @@ static int pcm_bluray_decode_frame(AVCodecContext *avctx, void *data,
     samples = buf_size / sample_size;
 
     /* get output buffer */
-    s->frame.nb_samples = samples;
-    if ((retval = avctx->get_buffer(avctx, &s->frame)) < 0) {
+    frame->nb_samples = samples;
+    if ((retval = ff_get_buffer(avctx, frame)) < 0) {
         av_log(avctx, AV_LOG_ERROR, "get_buffer() failed\n");
         return retval;
     }
-    dst16 = (int16_t *)s->frame.data[0];
-    dst32 = (int32_t *)s->frame.data[0];
+    dst16 = (int16_t *)frame->data[0];
+    dst32 = (int32_t *)frame->data[0];
 
     if (samples) {
         switch (avctx->channel_layout) {
@@ -304,8 +291,7 @@ static int pcm_bluray_decode_frame(AVCodecContext *avctx, void *data,
         }
     }
 
-    *got_frame_ptr   = 1;
-    *(AVFrame *)data = s->frame;
+    *got_frame_ptr = 1;
 
     retval = bytestream2_tell(&gb);
     if (avctx->debug & FF_DEBUG_BITSTREAM)
@@ -318,8 +304,6 @@ AVCodec ff_pcm_bluray_decoder = {
     .name           = "pcm_bluray",
     .type           = AVMEDIA_TYPE_AUDIO,
     .id             = AV_CODEC_ID_PCM_BLURAY,
-    .priv_data_size = sizeof(PCMBRDecode),
-    .init           = pcm_bluray_decode_init,
     .decode         = pcm_bluray_decode_frame,
     .capabilities   = CODEC_CAP_DR1,
     .sample_fmts    = (const enum AVSampleFormat[]){

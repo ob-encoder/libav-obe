@@ -30,6 +30,7 @@
 #include "libavutil/common.h"
 #include "libavutil/intreadwrite.h"
 #include "avcodec.h"
+#include "internal.h"
 
 #include <zlib.h>
 
@@ -179,7 +180,7 @@ static int decode_13(AVCodecContext *avctx, DxaDecContext *c, uint8_t* dst, uint
                 break;
             default:
                 av_log(avctx, AV_LOG_ERROR, "Unknown opcode %d\n", type);
-                return -1;
+                return AVERROR_INVALIDDATA;
             }
         }
         dst += stride * 4;
@@ -188,14 +189,14 @@ static int decode_13(AVCodecContext *avctx, DxaDecContext *c, uint8_t* dst, uint
     return 0;
 }
 
-static int decode_frame(AVCodecContext *avctx, void *data, int *data_size, AVPacket *avpkt)
+static int decode_frame(AVCodecContext *avctx, void *data, int *got_frame, AVPacket *avpkt)
 {
     const uint8_t *buf = avpkt->data;
     int buf_size = avpkt->size;
     DxaDecContext * const c = avctx->priv_data;
     uint8_t *outptr, *srcptr, *tmpptr;
     unsigned long dsize;
-    int i, j, compr;
+    int i, j, compr, ret;
     int stride;
     int orig_buf_size = buf_size;
     int pc = 0;
@@ -215,9 +216,9 @@ static int decode_frame(AVCodecContext *avctx, void *data, int *data_size, AVPac
         buf_size -= 768+4;
     }
 
-    if(avctx->get_buffer(avctx, &c->pic) < 0){
+    if ((ret = ff_get_buffer(avctx, &c->pic)) < 0) {
         av_log(avctx, AV_LOG_ERROR, "get_buffer() failed\n");
-        return -1;
+        return ret;
     }
     memcpy(c->pic.data[1], c->pal, AVPALETTE_SIZE);
     c->pic.palette_has_changed = pc;
@@ -235,7 +236,7 @@ static int decode_frame(AVCodecContext *avctx, void *data, int *data_size, AVPac
     dsize = c->dsize;
     if((compr != 4 && compr != -1) && uncompress(c->decomp_buf, &dsize, buf + 9, buf_size - 9) != Z_OK){
         av_log(avctx, AV_LOG_ERROR, "Uncompress failed!\n");
-        return -1;
+        return AVERROR_UNKNOWN;
     }
     switch(compr){
     case -1:
@@ -274,14 +275,14 @@ static int decode_frame(AVCodecContext *avctx, void *data, int *data_size, AVPac
         break;
     default:
         av_log(avctx, AV_LOG_ERROR, "Unknown/unsupported compression type %d\n", buf[4]);
-        return -1;
+        return AVERROR_INVALIDDATA;
     }
 
     FFSWAP(AVFrame, c->pic, c->prev);
     if(c->pic.data[0])
         avctx->release_buffer(avctx, &c->pic);
 
-    *data_size = sizeof(AVFrame);
+    *got_frame = 1;
     *(AVFrame*)data = c->prev;
 
     /* always report that the buffer was completely consumed */
@@ -292,12 +293,12 @@ static av_cold int decode_init(AVCodecContext *avctx)
 {
     DxaDecContext * const c = avctx->priv_data;
 
-    avctx->pix_fmt = PIX_FMT_PAL8;
+    avctx->pix_fmt = AV_PIX_FMT_PAL8;
 
     c->dsize = avctx->width * avctx->height * 2;
     if((c->decomp_buf = av_malloc(c->dsize)) == NULL) {
         av_log(avctx, AV_LOG_ERROR, "Can't allocate decompression buffer.\n");
-        return -1;
+        return AVERROR(ENOMEM);
     }
 
     return 0;

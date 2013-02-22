@@ -586,7 +586,7 @@ static av_cold int decode_init(AVCodecContext *avctx)
     ctx->pic_conf.pic_width  = 0;
     ctx->pic_conf.pic_height = 0;
 
-    avctx->pix_fmt = PIX_FMT_YUV410P;
+    avctx->pix_fmt = AV_PIX_FMT_YUV410P;
 
     ctx->decode_pic_hdr   = decode_pic_hdr;
     ctx->decode_band_hdr  = decode_band_hdr;
@@ -607,4 +607,5 @@ AVCodec ff_indeo4_decoder = {
     .close          = ff_ivi_decode_close,
     .decode         = ff_ivi_decode_frame,
     .long_name      = NULL_IF_CONFIG_SMALL("Intel Indeo Video Interactive 4"),
+    .capabilities   = CODEC_CAP_DR1,
 };

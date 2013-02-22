@@ -11,6 +11,7 @@ HEADERS = adler32.h                                                     \
           base64.h                                                      \
           blowfish.h                                                    \
           bswap.h                                                       \
+          channel_layout.h                                              \
           common.h                                                      \
           cpu.h                                                         \
           crc.h                                                         \
@@ -18,17 +19,18 @@ HEADERS = adler32.h                                                     \
           eval.h                                                        \
           fifo.h                                                        \
           file.h                                                        \
+          hmac.h                                                        \
           imgutils.h                                                    \
           intfloat.h                                                    \
           intfloat_readwrite.h                                          \
           intreadwrite.h                                                \
           lfg.h                                                         \
           log.h                                                         \
-          lzo.h                                                         \
           mathematics.h                                                 \
           md5.h                                                         \
           mem.h                                                         \
           dict.h                                                        \
+          old_pix_fmts.h                                                \
           opt.h                                                         \
           parseutils.h                                                  \
           pixdesc.h                                                     \
@@ -41,6 +43,8 @@ HEADERS = adler32.h                                                     \
           version.h                                                     \
           xtea.h                                                        \
 
+HEADERS-$(CONFIG_LZO)                   += lzo.h
+
 ARCH_HEADERS = bswap.h                                                  \
                intmath.h                                                \
                intreadwrite.h                                           \
@@ -51,10 +55,10 @@ BUILT_HEADERS = avconfig.h
 OBJS = adler32.o                                                        \
        aes.o                                                            \
        audio_fifo.o                                                     \
-       audioconvert.o                                                   \
        avstring.o                                                       \
        base64.o                                                         \
        blowfish.o                                                       \
+       channel_layout.o                                                 \
        cpu.o                                                            \
        crc.o                                                            \
        des.o                                                            \
@@ -63,13 +67,14 @@ OBJS = adler32.o                                                        \
        fifo.o                                                           \
        file.o                                                           \
        float_dsp.o                                                      \
+       hmac.o                                                           \
        imgutils.o                                                       \
        intfloat_readwrite.o                                             \
-       inverse.o                                                        \
+       intmath.o                                                        \
        lfg.o                                                            \
        lls.o                                                            \
        log.o                                                            \
-       lzo.o                                                            \
+       log2_tab.o                                                       \
        mathematics.o                                                    \
        md5.o                                                            \
        mem.o                                                            \
@@ -87,8 +92,11 @@ OBJS = adler32.o                                                        \
        utils.o                                                          \
        xtea.o                                                           \
 
-OBJS-$(HAVE_MSVCRT) += ../compat/msvcrt/snprintf.o                      \
-                       ../compat/strtod.o
+OBJS-$(CONFIG_LZO)                      += lzo.o
+
+OBJS += $(COMPAT_OBJS:%=../compat/%)
+
+SKIPHEADERS          = old_pix_fmts.h
 
 TESTPROGS = adler32                                                     \
             aes                                                         \
@@ -100,6 +108,7 @@ TESTPROGS = adler32                                                     \
             des                                                         \
             eval                                                        \
             fifo                                                        \
+            hmac                                                        \
             lfg                                                         \
             lls                                                         \
             md5                                                         \

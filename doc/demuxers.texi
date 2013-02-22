@@ -13,7 +13,7 @@ You can disable all the demuxers using the configure option
 the option "--enable-demuxer=@var{DEMUXER}", or disable it
 with the option "--disable-demuxer=@var{DEMUXER}".
 
-The option "-formats" of the ff* tools will display the list of
+The option "-formats" of the av* tools will display the list of
 enabled demuxers.
 
 The description of some of the currently available demuxers follows.
@@ -63,6 +63,19 @@ Note that the pattern must not necessarily contain "%d" or
 @example
 avconv -i img.jpeg img.png
 @end example
+
+@table @option
+@item -pixel_format @var{format}
+Set the pixel format (for raw image)
+@item -video_size   @var{size}
+Set the frame size (for raw image)
+@item -framerate    @var{rate}
+Set the frame rate
+@item -loop         @var{bool}
+Loop over the images
+@item -start_number @var{start}
+Specify the first number in the sequence
+@end table
 
 @section applehttp
 

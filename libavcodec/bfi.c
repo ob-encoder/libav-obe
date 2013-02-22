@@ -29,6 +29,7 @@
 #include "libavutil/common.h"
 #include "avcodec.h"
 #include "bytestream.h"
+#include "internal.h"
 
 typedef struct BFIContext {
     AVCodecContext *avctx;
@@ -39,13 +40,13 @@ typedef struct BFIContext {
 static av_cold int bfi_decode_init(AVCodecContext *avctx)
 {
     BFIContext *bfi = avctx->priv_data;
-    avctx->pix_fmt  = PIX_FMT_PAL8;
+    avctx->pix_fmt  = AV_PIX_FMT_PAL8;
     bfi->dst        = av_mallocz(avctx->width * avctx->height);
     return 0;
 }
 
 static int bfi_decode_frame(AVCodecContext *avctx, void *data,
-                            int *data_size, AVPacket *avpkt)
+                            int *got_frame, AVPacket *avpkt)
 {
     GetByteContext g;
     int buf_size    = avpkt->size;
@@ -54,16 +55,16 @@ static int bfi_decode_frame(AVCodecContext *avctx, void *data,
     uint8_t *src, *dst_offset, colour1, colour2;
     uint8_t *frame_end = bfi->dst + avctx->width * avctx->height;
     uint32_t *pal;
-    int i, j, height = avctx->height;
+    int i, j, ret, height = avctx->height;
 
     if (bfi->frame.data[0])
         avctx->release_buffer(avctx, &bfi->frame);
 
     bfi->frame.reference = 1;
 
-    if (avctx->get_buffer(avctx, &bfi->frame) < 0) {
+    if ((ret = ff_get_buffer(avctx, &bfi->frame)) < 0) {
         av_log(avctx, AV_LOG_ERROR, "get_buffer() failed\n");
-        return -1;
+        return ret;
     }
 
     bytestream2_init(&g, avpkt->data, buf_size);
@@ -75,7 +76,7 @@ static int bfi_decode_frame(AVCodecContext *avctx, void *data,
         /* Setting the palette */
         if (avctx->extradata_size > 768) {
             av_log(NULL, AV_LOG_ERROR, "Palette is too large.\n");
-            return -1;
+            return AVERROR_INVALIDDATA;
         }
         pal = (uint32_t *)bfi->frame.data[1];
         for (i = 0; i < avctx->extradata_size / 3; i++) {
@@ -103,7 +104,7 @@ static int bfi_decode_frame(AVCodecContext *avctx, void *data,
         if (!bytestream2_get_bytes_left(&g)) {
             av_log(avctx, AV_LOG_ERROR,
                    "Input resolution larger than actual frame.\n");
-            return -1;
+            return AVERROR_INVALIDDATA;
         }
 
         /* Get length and offset (if required) */
@@ -129,7 +130,7 @@ static int bfi_decode_frame(AVCodecContext *avctx, void *data,
         case 0:                // normal chain
             if (length >= bytestream2_get_bytes_left(&g)) {
                 av_log(avctx, AV_LOG_ERROR, "Frame larger than buffer.\n");
-                return -1;
+                return AVERROR_INVALIDDATA;
             }
             bytestream2_get_buffer(&g, dst, length);
             dst += length;
@@ -163,7 +164,7 @@ static int bfi_decode_frame(AVCodecContext *avctx, void *data,
         src += avctx->width;
         dst += bfi->frame.linesize[0];
     }
-    *data_size       = sizeof(AVFrame);
+    *got_frame = 1;
     *(AVFrame *)data = bfi->frame;
     return buf_size;
 }

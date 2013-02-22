@@ -181,9 +181,9 @@ static void jpeg_put_comments(MpegEncContext *s)
         AV_WB16(ptr, size);
     }
 
-    if(  s->avctx->pix_fmt == PIX_FMT_YUV420P
-       ||s->avctx->pix_fmt == PIX_FMT_YUV422P
-       ||s->avctx->pix_fmt == PIX_FMT_YUV444P){
+    if(  s->avctx->pix_fmt == AV_PIX_FMT_YUV420P
+       ||s->avctx->pix_fmt == AV_PIX_FMT_YUV422P
+       ||s->avctx->pix_fmt == AV_PIX_FMT_YUV444P){
         put_marker(p, COM);
         flush_put_bits(p);
         ptr = put_bits_ptr(p);
@@ -211,7 +211,7 @@ void ff_mjpeg_encode_picture_header(MpegEncContext *s)
     }
 
     put_bits(&s->pb, 16, 17);
-    if(lossless && s->avctx->pix_fmt == PIX_FMT_BGRA)
+    if(lossless && s->avctx->pix_fmt == AV_PIX_FMT_BGRA)
         put_bits(&s->pb, 8, 9); /* 9 bits/component RCT */
     else
         put_bits(&s->pb, 8, 8); /* 8 bits/component */
@@ -369,7 +369,7 @@ void ff_mjpeg_encode_dc(MpegEncContext *s, int val,
     }
 }
 
-static void encode_block(MpegEncContext *s, DCTELEM *block, int n)
+static void encode_block(MpegEncContext *s, int16_t *block, int n)
 {
     int mant, nbits, code, i, j;
     int component, dc, run, last_index, val;
@@ -427,7 +427,7 @@ static void encode_block(MpegEncContext *s, DCTELEM *block, int n)
         put_bits(&s->pb, huff_size_ac[0], huff_code_ac[0]);
 }
 
-void ff_mjpeg_encode_mb(MpegEncContext *s, DCTELEM block[6][64])
+void ff_mjpeg_encode_mb(MpegEncContext *s, int16_t block[6][64])
 {
     int i;
     for(i=0;i<5;i++) {
@@ -452,8 +452,8 @@ AVCodec ff_mjpeg_encoder = {
     .init           = ff_MPV_encode_init,
     .encode2        = ff_MPV_encode_picture,
     .close          = ff_MPV_encode_end,
-    .pix_fmts       = (const enum PixelFormat[]){
-        PIX_FMT_YUVJ420P, PIX_FMT_YUVJ422P, PIX_FMT_NONE
+    .pix_fmts       = (const enum AVPixelFormat[]){
+        AV_PIX_FMT_YUVJ420P, AV_PIX_FMT_YUVJ422P, AV_PIX_FMT_NONE
     },
     .long_name      = NULL_IF_CONFIG_SMALL("MJPEG (Motion JPEG)"),
 };

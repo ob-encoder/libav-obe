@@ -240,14 +240,14 @@ static void qpeg_decode_inter(QpegContext *qctx, uint8_t *dst,
 }
 
 static int decode_frame(AVCodecContext *avctx,
-                        void *data, int *data_size,
+                        void *data, int *got_frame,
                         AVPacket *avpkt)
 {
     uint8_t ctable[128];
     QpegContext * const a = avctx->priv_data;
     AVFrame * const p = &a->pic;
     uint8_t* outdata;
-    int delta;
+    int delta, ret;
     const uint8_t *pal = av_packet_get_side_data(avpkt, AV_PKT_DATA_PALETTE, NULL);
 
     if (avpkt->size < 0x86) {
@@ -257,9 +257,9 @@ static int decode_frame(AVCodecContext *avctx,
 
     bytestream2_init(&a->buffer, avpkt->data, avpkt->size);
     p->reference = 3;
-    if (avctx->reget_buffer(avctx, p) < 0) {
+    if ((ret = avctx->reget_buffer(avctx, p)) < 0) {
         av_log(avctx, AV_LOG_ERROR, "reget_buffer() failed\n");
-        return -1;
+        return ret;
     }
     outdata = a->pic.data[0];
     bytestream2_skip(&a->buffer, 4);
@@ -280,7 +280,7 @@ static int decode_frame(AVCodecContext *avctx,
     }
     memcpy(a->pic.data[1], a->pal, AVPALETTE_SIZE);
 
-    *data_size = sizeof(AVFrame);
+    *got_frame      = 1;
     *(AVFrame*)data = a->pic;
 
     return avpkt->size;
@@ -290,7 +290,7 @@ static av_cold int decode_init(AVCodecContext *avctx){
     QpegContext * const a = avctx->priv_data;
 
     a->avctx = avctx;
-    avctx->pix_fmt= PIX_FMT_PAL8;
+    avctx->pix_fmt= AV_PIX_FMT_PAL8;
     a->refdata = av_malloc(avctx->width * avctx->height);
 
     return 0;

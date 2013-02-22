@@ -19,8 +19,11 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include "libavutil/channel_layout.h"
 #include "libavutil/float_dsp.h"
+#include "libavutil/internal.h"
 #include "avcodec.h"
+#include "internal.h"
 #define BITSTREAM_READER_LE
 #include "get_bits.h"
 #include "ra288.h"
@@ -35,8 +38,6 @@
 #define RA288_BLOCKS_PER_FRAME 32
 
 typedef struct {
-    AVFrame frame;
-    DSPContext dsp;
     AVFloatDSPContext fdsp;
     DECLARE_ALIGNED(32, float,   sp_lpc)[FFALIGN(36, 16)];   ///< LPC coefficients for speech data (spec: A)
     DECLARE_ALIGNED(32, float, gain_lpc)[FFALIGN(10, 16)];   ///< LPC coefficients for gain        (spec: GB)
@@ -61,11 +62,12 @@ typedef struct {
 static av_cold int ra288_decode_init(AVCodecContext *avctx)
 {
     RA288Context *ractx = avctx->priv_data;
-    avctx->sample_fmt = AV_SAMPLE_FMT_FLT;
-    avpriv_float_dsp_init(&ractx->fdsp, avctx->flags & CODEC_FLAG_BITEXACT);
 
-    avcodec_get_frame_defaults(&ractx->frame);
-    avctx->coded_frame = &ractx->frame;
+    avctx->channels       = 1;
+    avctx->channel_layout = AV_CH_LAYOUT_MONO;
+    avctx->sample_fmt     = AV_SAMPLE_FMT_FLT;
+
+    avpriv_float_dsp_init(&ractx->fdsp, avctx->flags & CODEC_FLAG_BITEXACT);
 
     return 0;
 }
@@ -73,7 +75,7 @@ static av_cold int ra288_decode_init(AVCodecContext *avctx)
 static void convolve(float *tgt, const float *src, int len, int n)
 {
     for (; n >= 0; n--)
-        tgt[n] = ff_scalarproduct_float_c(src, src - n, len);
+        tgt[n] = avpriv_scalarproduct_float_c(src, src - n, len);
 
 }
 
@@ -102,7 +104,7 @@ static void decode(RA288Context *ractx, float gain, int cb_coef)
     for (i=0; i < 5; i++)
         buffer[i] = codetable[cb_coef][i] * sumsum;
 
-    sum = ff_scalarproduct_float_c(buffer, buffer, 5) * ((1 << 24) / 5.);
+    sum = avpriv_scalarproduct_float_c(buffer, buffer, 5) * ((1 << 24) / 5.);
 
     sum = FFMAX(sum, 1);
 
@@ -172,6 +174,7 @@ static void backward_filter(RA288Context *ractx,
 static int ra288_decode_frame(AVCodecContext * avctx, void *data,
                               int *got_frame_ptr, AVPacket *avpkt)
 {
+    AVFrame *frame     = data;
     const uint8_t *buf = avpkt->data;
     int buf_size = avpkt->size;
     float *out;
@@ -187,12 +190,12 @@ static int ra288_decode_frame(AVCodecContext * avctx, void *data,
     }
 
     /* get output buffer */
-    ractx->frame.nb_samples = RA288_BLOCK_SIZE * RA288_BLOCKS_PER_FRAME;
-    if ((ret = avctx->get_buffer(avctx, &ractx->frame)) < 0) {
+    frame->nb_samples = RA288_BLOCK_SIZE * RA288_BLOCKS_PER_FRAME;
+    if ((ret = ff_get_buffer(avctx, frame)) < 0) {
         av_log(avctx, AV_LOG_ERROR, "get_buffer() failed\n");
         return ret;
     }
-    out = (float *)ractx->frame.data[0];
+    out = (float *)frame->data[0];
 
     init_get_bits(&gb, buf, avctx->block_align * 8);
 
@@ -214,8 +217,7 @@ static int ra288_decode_frame(AVCodecContext * avctx, void *data,
         }
     }
 
-    *got_frame_ptr   = 1;
-    *(AVFrame *)data = ractx->frame;
+    *got_frame_ptr = 1;
 
     return avctx->block_align;
 }

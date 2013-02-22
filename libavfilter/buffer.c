@@ -16,7 +16,7 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#include "libavutil/audioconvert.h"
+#include "libavutil/channel_layout.h"
 #include "libavutil/common.h"
 #include "libavcodec/avcodec.h"
 
@@ -146,7 +146,7 @@ int avfilter_copy_buf_props(AVFrame *dst, const AVFilterBufferRef *src)
             if (!dst->extended_data)
                 return AVERROR(ENOMEM);
             memcpy(dst->extended_data, src->extended_data,
-                   planes * sizeof(dst->extended_data));
+                   planes * sizeof(*dst->extended_data));
         } else
             dst->extended_data = dst->data;
 

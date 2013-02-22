@@ -23,6 +23,7 @@
 #include "libavutil/imgutils.h"
 #include "avcodec.h"
 #include "bytestream.h"
+#include "internal.h"
 #include "targa.h"
 
 typedef struct TargaContext {
@@ -94,7 +95,7 @@ static int targa_decode_rle(AVCodecContext *avctx, TargaContext *s,
 }
 
 static int decode_frame(AVCodecContext *avctx,
-                        void *data, int *data_size,
+                        void *data, int *got_frame,
                         AVPacket *avpkt)
 {
     TargaContext * const s = avctx->priv_data;
@@ -102,7 +103,7 @@ static int decode_frame(AVCodecContext *avctx,
     AVFrame * const p = &s->picture;
     uint8_t *dst;
     int stride;
-    int idlen, compr, y, w, h, bpp, flags;
+    int idlen, compr, y, w, h, bpp, flags, ret;
     int first_clr, colors, csize;
 
     bytestream2_init(&s->gb, avpkt->data, avpkt->size);
@@ -124,35 +125,35 @@ static int decode_frame(AVCodecContext *avctx,
 
     switch(bpp){
     case 8:
-        avctx->pix_fmt = ((compr & (~TGA_RLE)) == TGA_BW) ? PIX_FMT_GRAY8 : PIX_FMT_PAL8;
+        avctx->pix_fmt = ((compr & (~TGA_RLE)) == TGA_BW) ? AV_PIX_FMT_GRAY8 : AV_PIX_FMT_PAL8;
         break;
     case 15:
-        avctx->pix_fmt = PIX_FMT_RGB555LE;
+        avctx->pix_fmt = AV_PIX_FMT_RGB555LE;
         break;
     case 16:
-        avctx->pix_fmt = PIX_FMT_RGB555LE;
+        avctx->pix_fmt = AV_PIX_FMT_RGB555LE;
         break;
     case 24:
-        avctx->pix_fmt = PIX_FMT_BGR24;
+        avctx->pix_fmt = AV_PIX_FMT_BGR24;
         break;
     case 32:
-        avctx->pix_fmt = PIX_FMT_BGRA;
+        avctx->pix_fmt = AV_PIX_FMT_BGRA;
         break;
     default:
         av_log(avctx, AV_LOG_ERROR, "Bit depth %i is not supported\n", bpp);
-        return -1;
+        return AVERROR_INVALIDDATA;
     }
 
     if(s->picture.data[0])
         avctx->release_buffer(avctx, &s->picture);
 
-    if(av_image_check_size(w, h, 0, avctx))
-        return -1;
+    if ((ret = av_image_check_size(w, h, 0, avctx)) < 0)
+        return ret;
     if(w != avctx->width || h != avctx->height)
         avcodec_set_dimensions(avctx, w, h);
-    if(avctx->get_buffer(avctx, p) < 0){
+    if ((ret = ff_get_buffer(avctx, p)) < 0){
         av_log(avctx, AV_LOG_ERROR, "get_buffer() failed\n");
-        return -1;
+        return ret;
     }
     if(flags & 0x20){
         dst = p->data[0];
@@ -166,7 +167,7 @@ static int decode_frame(AVCodecContext *avctx,
         int pal_size, pal_sample_size;
         if((colors + first_clr) > 256){
             av_log(avctx, AV_LOG_ERROR, "Incorrect palette: %i colors with offset %i\n", colors, first_clr);
-            return -1;
+            return AVERROR_INVALIDDATA;
         }
         switch (csize) {
         case 24: pal_sample_size = 3; break;
@@ -174,10 +175,10 @@ static int decode_frame(AVCodecContext *avctx,
         case 15: pal_sample_size = 2; break;
         default:
             av_log(avctx, AV_LOG_ERROR, "Palette entry size %i bits is not supported\n", csize);
-            return -1;
+            return AVERROR_INVALIDDATA;
         }
         pal_size = colors * pal_sample_size;
-        if(avctx->pix_fmt != PIX_FMT_PAL8)//should not occur but skip palette anyway
+        if(avctx->pix_fmt != AV_PIX_FMT_PAL8)//should not occur but skip palette anyway
             bytestream2_skip(&s->gb, pal_size);
         else{
             int t;
@@ -232,7 +233,7 @@ static int decode_frame(AVCodecContext *avctx,
     }
 
     *picture   = s->picture;
-    *data_size = sizeof(AVPicture);
+    *got_frame = 1;
 
     return avpkt->size;
 }

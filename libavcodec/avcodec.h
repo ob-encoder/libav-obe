@@ -152,7 +152,9 @@ enum AVCodecID {
     AV_CODEC_ID_MSZH,
     AV_CODEC_ID_ZLIB,
     AV_CODEC_ID_QTRLE,
+#if FF_API_SNOW
     AV_CODEC_ID_SNOW,
+#endif
     AV_CODEC_ID_TSCC,
     AV_CODEC_ID_ULTI,
     AV_CODEC_ID_QDRAW,
@@ -265,6 +267,7 @@ enum AVCodecID {
     AV_CODEC_ID_MTS2,
     AV_CODEC_ID_CLLC,
     AV_CODEC_ID_MSS2,
+    AV_CODEC_ID_VP9,
 
     /* various PCM "codecs" */
     AV_CODEC_ID_FIRST_AUDIO = 0x10000,     ///< A dummy id pointing at the start of audio codecs
@@ -406,6 +409,8 @@ enum AVCodecID {
     AV_CODEC_ID_IAC,
     AV_CODEC_ID_ILBC,
     AV_CODEC_ID_OPUS,
+    AV_CODEC_ID_COMFORT_NOISE,
+    AV_CODEC_ID_TAK,
 
     /* subtitle codecs */
     AV_CODEC_ID_FIRST_SUBTITLE = 0x17000,          ///< A dummy ID pointing at the start of subtitle codecs.
@@ -516,7 +521,9 @@ enum Motion_Est_ID {
     ME_X1,          ///< reserved for experiments
     ME_HEX,         ///< hexagon based search
     ME_UMH,         ///< uneven multi-hexagon search
+#if FF_API_SNOW
     ME_ITER,        ///< iterative search
+#endif
     ME_TESA,        ///< transformed exhaustive search algorithm
 };
 
@@ -650,6 +657,8 @@ typedef struct RcOverride{
 #define CODEC_FLAG2_FAST          0x00000001 ///< Allow non spec compliant speedup tricks.
 #define CODEC_FLAG2_NO_OUTPUT     0x00000004 ///< Skip bitstream encoding.
 #define CODEC_FLAG2_LOCAL_HEADER  0x00000008 ///< Place global headers at every keyframe instead of in extradata.
+#define CODEC_FLAG2_IGNORE_CROP   0x00010000 ///< Discard cropping information from SPS.
+
 #if FF_API_MPV_GLOBAL_OPTS
 #define CODEC_FLAG_CBP_RD         0x04000000 ///< Use rate distortion optimization for cbp.
 #define CODEC_FLAG_QP_RD          0x08000000 ///< Use rate distortion optimization for qp selectioon.
@@ -871,6 +880,28 @@ enum AVPacketSideDataType {
     AV_PKT_DATA_H263_MB_INFO,
 };
 
+/**
+ * This structure stores compressed data. It is typically exported by demuxers
+ * and then passed as input to decoders, or received as output from encoders and
+ * then passed to muxers.
+ *
+ * For video, it should typically contain one compressed frame. For audio it may
+ * contain several compressed frames.
+ *
+ * AVPacket is one of the few structs in Libav, whose size is a part of public
+ * ABI. Thus it may be allocated on stack and no new fields can be added to it
+ * without libavcodec and libavformat major bump.
+ *
+ * The semantics of data ownership depends on the destruct field.
+ * If it is set, the packet data is dynamically allocated and is valid
+ * indefinitely until av_free_packet() is called (which in turn calls the
+ * destruct callback to free the data). If destruct is not set, the packet data
+ * is typically backed by some static buffer somewhere and is only valid for a
+ * limited time (e.g. until the next read call when demuxing).
+ *
+ * The side data is always allocated with av_malloc() and is freed in
+ * av_free_packet().
+ */
 typedef struct AVPacket {
     /**
      * Presentation timestamp in AVStream->time_base units; the time at which
@@ -948,11 +979,19 @@ enum AVSideDataParamChangeFlags {
  */
 
 /**
- * Audio Video Frame.
- * New fields can be added to the end of AVFRAME with minor version
- * bumps. Removal, reordering and changes to existing fields require
- * a major version bump.
- * sizeof(AVFrame) must not be used outside libav*.
+ * This structure describes decoded (raw) audio or video data.
+ *
+ * AVFrame must be allocated using avcodec_alloc_frame() and freed with
+ * avcodec_free_frame(). Note that this allocates only the AVFrame itself. The
+ * buffers for the data must be managed through other means.
+ *
+ * AVFrame is typically allocated once and then reused multiple times to hold
+ * different data (e.g. a single AVFrame to hold frames received from a
+ * decoder). In such a case, avcodec_get_frame_defaults() should be used to
+ * reset the frame to its original clean state before it is reused again.
+ *
+ * sizeof(AVFrame) is not a part of the public ABI, so new fields may be added
+ * to the end with a minor bump.
  */
 typedef struct AVFrame {
 #define AV_NUM_DATA_POINTERS 8
@@ -990,7 +1029,7 @@ typedef struct AVFrame {
      * extended_data must be used by the decoder in order to access all
      * channels.
      *
-     * encoding: unused
+     * encoding: set by user
      * decoding: set by AVCodecContext.get_buffer()
      */
     uint8_t **extended_data;
@@ -1011,7 +1050,7 @@ typedef struct AVFrame {
 
     /**
      * format of the frame, -1 if unknown or unset
-     * Values correspond to enum PixelFormat for video frames,
+     * Values correspond to enum AVPixelFormat for video frames,
      * enum AVSampleFormat for audio)
      * - encoding: unused
      * - decoding: Read by user.
@@ -1056,14 +1095,14 @@ typedef struct AVFrame {
     int64_t pts;
 
     /**
-     * reordered pts from the last AVPacket that has been input into the decoder
+     * pts copied from the AVPacket that was decoded to produce this frame
      * - encoding: unused
      * - decoding: Read by user.
      */
     int64_t pkt_pts;
 
     /**
-     * dts from the last AVPacket that has been input into the decoder
+     * dts copied from the AVPacket that triggered returning this frame
      * - encoding: unused
      * - decoding: Read by user.
      */
@@ -1442,7 +1481,7 @@ typedef struct AVCodecContext {
     int ticks_per_frame;
 
     /**
-     * Encoder delay.
+     * Codec delay.
      *
      * Video:
      *   Number of frames the decoded output will be delayed relative to the
@@ -1492,18 +1531,18 @@ typedef struct AVCodecContext {
     int gop_size;
 
     /**
-     * Pixel format, see PIX_FMT_xxx.
+     * Pixel format, see AV_PIX_FMT_xxx.
      * May be set by the demuxer if known from headers.
      * May be overriden by the decoder if it knows better.
      * - encoding: Set by user.
      * - decoding: Set by user if known, overridden by libavcodec if known
      */
-    enum PixelFormat pix_fmt;
+    enum AVPixelFormat pix_fmt;
 
     /**
      * Motion estimation algorithm used for video coding.
      * 1 (zero), 2 (full), 3 (log), 4 (phods), 5 (epzs), 6 (x1), 7 (hex),
-     * 8 (umh), 9 (iter), 10 (tesa) [7, 8, 10 are x264 specific, 9 is snow specific]
+     * 8 (umh), 10 (tesa) [7, 8, 10 are x264 specific]
      * - encoding: MUST be set by user.
      * - decoding: unused
      */
@@ -1545,7 +1584,7 @@ typedef struct AVCodecContext {
      * - encoding: unused
      * - decoding: Set by user, if not set the native format will be chosen.
      */
-    enum PixelFormat (*get_format)(struct AVCodecContext *s, const enum PixelFormat * fmt);
+    enum AVPixelFormat (*get_format)(struct AVCodecContext *s, const enum AVPixelFormat * fmt);
 
     /**
      * maximum number of B-frames between non-B-frames
@@ -1726,8 +1765,10 @@ typedef struct AVCodecContext {
 #define FF_CMP_VSAD   8
 #define FF_CMP_VSSE   9
 #define FF_CMP_NSSE   10
+#if FF_API_SNOW
 #define FF_CMP_W53    11
 #define FF_CMP_W97    12
+#endif
 #define FF_CMP_DCTMAX 13
 #define FF_CMP_DCT264 14
 #define FF_CMP_CHROMA 256
@@ -2081,7 +2122,13 @@ typedef struct AVCodecContext {
 
     /* The following data should not be initialized. */
     /**
-     * Samples per packet, initialized when calling 'init'.
+     * Number of samples per channel in an audio frame.
+     *
+     * - encoding: set by libavcodec in avcodec_open2(). Each submitted frame
+     *   except the last must contain exactly frame_size samples per channel.
+     *   May be 0 when the codec has CODEC_CAP_VARIABLE_FRAME_SIZE set, then the
+     *   frame size is not restricted.
+     * - decoding: may be set by some decoders to indicate constant frame size
      */
     int frame_size;
 
@@ -2189,7 +2236,12 @@ typedef struct AVCodecContext {
      *
      * Decoders cannot use the buffer after returning from
      * avcodec_decode_audio4(), so they will not call release_buffer(), as it
-     * is assumed to be released immediately upon return.
+     * is assumed to be released immediately upon return. In some rare cases,
+     * a decoder may need to call get_buffer() more than once in a single
+     * call to avcodec_decode_audio4(). In that case, when get_buffer() is
+     * called again after it has already been called once, the previously
+     * acquired buffer is assumed to be released at that time and may not be
+     * reused by the decoder.
      *
      * As a convenience, av_samples_get_buffer_size() and
      * av_samples_fill_arrays() in libavutil may be used by custom get_buffer()
@@ -2257,7 +2309,7 @@ typedef struct AVCodecContext {
 
     /**
      * ratecontrol qmin qmax limiting method
-     * 0-> clipping, 1-> use a nice continous function to limit qscale wthin qmin/qmax.
+     * 0-> clipping, 1-> use a nice continuous function to limit qscale wthin qmin/qmax.
      * - encoding: Set by user.
      * - decoding: unused
      */
@@ -2620,26 +2672,32 @@ typedef struct AVCodecContext {
 #define FF_IDCT_INT           1
 #define FF_IDCT_SIMPLE        2
 #define FF_IDCT_SIMPLEMMX     3
+#if FF_API_LIBMPEG2
 #define FF_IDCT_LIBMPEG2MMX   4
+#endif
+#if FF_API_MMI
 #define FF_IDCT_MMI           5
+#endif
 #define FF_IDCT_ARM           7
 #define FF_IDCT_ALTIVEC       8
 #define FF_IDCT_SH4           9
 #define FF_IDCT_SIMPLEARM     10
-#define FF_IDCT_H264          11
-#define FF_IDCT_VP3           12
 #define FF_IDCT_IPP           13
 #define FF_IDCT_XVIDMMX       14
-#define FF_IDCT_CAVS          15
 #define FF_IDCT_SIMPLEARMV5TE 16
 #define FF_IDCT_SIMPLEARMV6   17
 #define FF_IDCT_SIMPLEVIS     18
-#define FF_IDCT_WMV2          19
 #define FF_IDCT_FAAN          20
-#define FF_IDCT_EA            21
 #define FF_IDCT_SIMPLENEON    22
 #define FF_IDCT_SIMPLEALPHA   23
+#if FF_API_IDCT
+#define FF_IDCT_H264          11
+#define FF_IDCT_VP3           12
+#define FF_IDCT_CAVS          15
+#define FF_IDCT_WMV2          19
+#define FF_IDCT_EA            21
 #define FF_IDCT_BINK          24
+#endif
 
 #if FF_API_DSP_MASK
     /**
@@ -2987,7 +3045,7 @@ typedef struct AVCodec {
      */
     int capabilities;
     const AVRational *supported_framerates; ///< array of supported framerates, or NULL if any, array is terminated by {0,0}
-    const enum PixelFormat *pix_fmts;       ///< array of supported pixel formats, or NULL if unknown, array is terminated by -1
+    const enum AVPixelFormat *pix_fmts;     ///< array of supported pixel formats, or NULL if unknown, array is terminated by -1
     const int *supported_samplerates;       ///< array of supported audio samplerates, or NULL if unknown, array is terminated by 0
     const enum AVSampleFormat *sample_fmts; ///< array of supported sample formats, or NULL if unknown, array is terminated by -1
     const uint64_t *channel_layouts;         ///< array of support channel layouts, or NULL if unknown. array is terminated by 0
@@ -3088,7 +3146,7 @@ typedef struct AVHWAccel {
      *
      * Only hardware accelerated formats are supported here.
      */
-    enum PixelFormat pix_fmt;
+    enum AVPixelFormat pix_fmt;
 
     /**
      * Hardware accelerated codec capabilities.
@@ -3189,6 +3247,8 @@ enum AVSubtitleType {
     SUBTITLE_ASS,
 };
 
+#define AV_SUBTITLE_FLAG_FORCED 0x00000001
+
 typedef struct AVSubtitleRect {
     int x;         ///< top left corner  of pict, undefined when pict is not set
     int y;         ///< top left corner  of pict, undefined when pict is not set
@@ -3211,6 +3271,7 @@ typedef struct AVSubtitleRect {
      * struct.
      */
     char *ass;
+    int flags;
 } AVSubtitleRect;
 
 typedef struct AVSubtitle {
@@ -3910,6 +3971,10 @@ int av_parser_parse2(AVCodecParserContext *s,
                      int64_t pts, int64_t dts,
                      int64_t pos);
 
+/**
+ * @return 0 if the output buffer is a subset of the input, 1 if it is allocated and must be freed
+ * @deprecated use AVBitstreamFilter
+ */
 int av_parser_change(AVCodecParserContext *s,
                      AVCodecContext *avctx,
                      uint8_t **poutbuf, int *poutbuf_size,
@@ -4078,9 +4143,11 @@ int avcodec_encode_subtitle(AVCodecContext *avctx, uint8_t *buf, int buf_size,
  * @}
  */
 
+#if FF_API_AVCODEC_RESAMPLE
 /**
  * @defgroup lavc_resample Audio resampling
  * @ingroup libavc
+ * @deprecated use libavresample instead
  *
  * @{
  */
@@ -4105,6 +4172,7 @@ typedef struct ReSampleContext ReSampleContext;
  * @param cutoff           cutoff frequency, 1.0 corresponds to half the output sampling rate
  * @return allocated ReSampleContext, NULL if error occurred
  */
+attribute_deprecated
 ReSampleContext *av_audio_resample_init(int output_channels, int input_channels,
                                         int output_rate, int input_rate,
                                         enum AVSampleFormat sample_fmt_out,
@@ -4112,6 +4180,7 @@ ReSampleContext *av_audio_resample_init(int output_channels, int input_channels,
                                         int filter_length, int log2_phase_count,
                                         int linear, double cutoff);
 
+attribute_deprecated
 int audio_resample(ReSampleContext *s, short *output, short *input, int nb_samples);
 
 /**
@@ -4120,6 +4189,7 @@ int audio_resample(ReSampleContext *s, short *output, short *input, int nb_sampl
  * @param s a non-NULL pointer to a resample context previously
  *          created with av_audio_resample_init()
  */
+attribute_deprecated
 void audio_resample_close(ReSampleContext *s);
 
 
@@ -4132,6 +4202,7 @@ void audio_resample_close(ReSampleContext *s);
                  between the 2 closest, if 0 the closest will be used
  * @param cutoff cutoff frequency, 1.0 corresponds to half the output sampling rate
  */
+attribute_deprecated
 struct AVResampleContext *av_resample_init(int out_rate, int in_rate, int filter_length, int log2_phase_count, int linear, double cutoff);
 
 /**
@@ -4143,6 +4214,7 @@ struct AVResampleContext *av_resample_init(int out_rate, int in_rate, int filter
  * @param update_ctx If this is 0 then the context will not be modified, that way several channels can be resampled with the same context.
  * @return the number of samples written in dst or -1 if an error occurred
  */
+attribute_deprecated
 int av_resample(struct AVResampleContext *c, short *dst, short *src, int *consumed, int src_size, int dst_size, int update_ctx);
 
 
@@ -4158,12 +4230,15 @@ int av_resample(struct AVResampleContext *c, short *dst, short *src, int *consum
  * note, due to rounding the actual compensation might be slightly different,
  * especially if the compensation_distance is large and the in_rate used during init is small
  */
+attribute_deprecated
 void av_resample_compensate(struct AVResampleContext *c, int sample_delta, int compensation_distance);
+attribute_deprecated
 void av_resample_close(struct AVResampleContext *c);
 
 /**
  * @}
  */
+#endif
 
 /**
  * @addtogroup lavc_picture
@@ -4181,7 +4256,7 @@ void av_resample_close(struct AVResampleContext *c);
  * @param height the height of the picture
  * @return zero if successful, a negative value if not
  */
-int avpicture_alloc(AVPicture *picture, enum PixelFormat pix_fmt, int width, int height);
+int avpicture_alloc(AVPicture *picture, enum AVPixelFormat pix_fmt, int width, int height);
 
 /**
  * Free a picture previously allocated by avpicture_alloc().
@@ -4213,7 +4288,7 @@ void avpicture_free(AVPicture *picture);
  * @return size of the image data in bytes
  */
 int avpicture_fill(AVPicture *picture, uint8_t *ptr,
-                   enum PixelFormat pix_fmt, int width, int height);
+                   enum AVPixelFormat pix_fmt, int width, int height);
 
 /**
  * Copy pixel data from an AVPicture into a buffer.
@@ -4230,7 +4305,8 @@ int avpicture_fill(AVPicture *picture, uint8_t *ptr,
  * @param[in] dest_size The size of 'dest'.
  * @return The number of bytes written to dest, or a negative value (error code) on error.
  */
-int avpicture_layout(const AVPicture* src, enum PixelFormat pix_fmt, int width, int height,
+int avpicture_layout(const AVPicture* src, enum AVPixelFormat pix_fmt,
+                     int width, int height,
                      unsigned char *dest, int dest_size);
 
 /**
@@ -4245,29 +4321,29 @@ int avpicture_layout(const AVPicture* src, enum PixelFormat pix_fmt, int width, 
  * @param height the height of the image
  * @return Image data size in bytes or -1 on error (e.g. too large dimensions).
  */
-int avpicture_get_size(enum PixelFormat pix_fmt, int width, int height);
+int avpicture_get_size(enum AVPixelFormat pix_fmt, int width, int height);
 
 /**
  *  deinterlace - if not supported return -1
  */
 int avpicture_deinterlace(AVPicture *dst, const AVPicture *src,
-                          enum PixelFormat pix_fmt, int width, int height);
+                          enum AVPixelFormat pix_fmt, int width, int height);
 /**
  * Copy image src to dst. Wraps av_picture_data_copy() above.
  */
 void av_picture_copy(AVPicture *dst, const AVPicture *src,
-                     enum PixelFormat pix_fmt, int width, int height);
+                     enum AVPixelFormat pix_fmt, int width, int height);
 
 /**
  * Crop image top and left side.
  */
 int av_picture_crop(AVPicture *dst, const AVPicture *src,
-                    enum PixelFormat pix_fmt, int top_band, int left_band);
+                    enum AVPixelFormat pix_fmt, int top_band, int left_band);
 
 /**
  * Pad image.
  */
-int av_picture_pad(AVPicture *dst, const AVPicture *src, int height, int width, enum PixelFormat pix_fmt,
+int av_picture_pad(AVPicture *dst, const AVPicture *src, int height, int width, enum AVPixelFormat pix_fmt,
             int padtop, int padbottom, int padleft, int padright, int *color);
 
 /**
@@ -4290,14 +4366,18 @@ int av_picture_pad(AVPicture *dst, const AVPicture *src, int height, int width, 
  * @{
  */
 
-void avcodec_get_chroma_sub_sample(enum PixelFormat pix_fmt, int *h_shift, int *v_shift);
+/**
+ * @deprecated Use av_pix_fmt_get_chroma_sub_sample
+ */
+
+void attribute_deprecated avcodec_get_chroma_sub_sample(enum AVPixelFormat pix_fmt, int *h_shift, int *v_shift);
 
 /**
  * Return a value representing the fourCC code associated to the
  * pixel format pix_fmt, or 0 if no associated fourCC code can be
  * found.
  */
-unsigned int avcodec_pix_fmt_to_codec_tag(enum PixelFormat pix_fmt);
+unsigned int avcodec_pix_fmt_to_codec_tag(enum AVPixelFormat pix_fmt);
 
 #define FF_LOSS_RESOLUTION  0x0001 /**< loss due to resolution change */
 #define FF_LOSS_DEPTH       0x0002 /**< loss due to color depth change */
@@ -4323,7 +4403,7 @@ unsigned int avcodec_pix_fmt_to_codec_tag(enum PixelFormat pix_fmt);
  * @param[in] has_alpha Whether the source pixel format alpha channel is used.
  * @return Combination of flags informing you what kind of losses will occur.
  */
-int avcodec_get_pix_fmt_loss(enum PixelFormat dst_pix_fmt, enum PixelFormat src_pix_fmt,
+int avcodec_get_pix_fmt_loss(enum AVPixelFormat dst_pix_fmt, enum AVPixelFormat src_pix_fmt,
                              int has_alpha);
 
 #if FF_API_FIND_BEST_PIX_FMT
@@ -4340,8 +4420,8 @@ int avcodec_get_pix_fmt_loss(enum PixelFormat dst_pix_fmt, enum PixelFormat src_
  * pix_fmt_mask parameter.
  *
  * @code
- * src_pix_fmt = PIX_FMT_YUV420P;
- * pix_fmt_mask = (1 << PIX_FMT_YUV422P) || (1 << PIX_FMT_RGB24);
+ * src_pix_fmt = AV_PIX_FMT_YUV420P;
+ * pix_fmt_mask = (1 << AV_PIX_FMT_YUV422P) || (1 << AV_PIX_FMT_RGB24);
  * dst_pix_fmt = avcodec_find_best_pix_fmt(pix_fmt_mask, src_pix_fmt, alpha, &loss);
  * @endcode
  *
@@ -4352,7 +4432,7 @@ int avcodec_get_pix_fmt_loss(enum PixelFormat dst_pix_fmt, enum PixelFormat src_
  * @return The best pixel format to convert to or -1 if none was found.
  */
 attribute_deprecated
-enum PixelFormat avcodec_find_best_pix_fmt(int64_t pix_fmt_mask, enum PixelFormat src_pix_fmt,
+enum AVPixelFormat avcodec_find_best_pix_fmt(int64_t pix_fmt_mask, enum AVPixelFormat src_pix_fmt,
                               int has_alpha, int *loss_ptr);
 #endif /* FF_API_FIND_BEST_PIX_FMT */
 
@@ -4367,17 +4447,17 @@ enum PixelFormat avcodec_find_best_pix_fmt(int64_t pix_fmt_mask, enum PixelForma
  * pix_fmt_list parameter.
  *
  *
- * @param[in] pix_fmt_list PIX_FMT_NONE terminated array of pixel formats to choose from
+ * @param[in] pix_fmt_list AV_PIX_FMT_NONE terminated array of pixel formats to choose from
  * @param[in] src_pix_fmt source pixel format
  * @param[in] has_alpha Whether the source pixel format alpha channel is used.
  * @param[out] loss_ptr Combination of flags informing you what kind of losses will occur.
  * @return The best pixel format to convert to or -1 if none was found.
  */
-enum PixelFormat avcodec_find_best_pix_fmt2(enum PixelFormat *pix_fmt_list,
-                                            enum PixelFormat src_pix_fmt,
-                                            int has_alpha, int *loss_ptr);
+enum AVPixelFormat avcodec_find_best_pix_fmt2(enum AVPixelFormat *pix_fmt_list,
+                                              enum AVPixelFormat src_pix_fmt,
+                                              int has_alpha, int *loss_ptr);
 
-enum PixelFormat avcodec_default_get_format(struct AVCodecContext *s, const enum PixelFormat * fmt);
+enum AVPixelFormat avcodec_default_get_format(struct AVCodecContext *s, const enum AVPixelFormat * fmt);
 
 /**
  * @}

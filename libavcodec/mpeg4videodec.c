@@ -50,7 +50,7 @@ static const int mb_type_b_map[4]= {
  * @param n block index (0-3 are luma, 4-5 are chroma)
  * @param dir the ac prediction direction
  */
-void ff_mpeg4_pred_ac(MpegEncContext * s, DCTELEM *block, int n,
+void ff_mpeg4_pred_ac(MpegEncContext * s, int16_t *block, int n,
                       int dir)
 {
     int i;
@@ -796,13 +796,13 @@ int ff_mpeg4_decode_partitions(MpegEncContext *s)
 
     mb_num= mpeg4_decode_partition_a(s);
     if(mb_num<0){
-        ff_er_add_slice(s, s->resync_mb_x, s->resync_mb_y, s->mb_x, s->mb_y, part_a_error);
+        ff_er_add_slice(&s->er, s->resync_mb_x, s->resync_mb_y, s->mb_x, s->mb_y, part_a_error);
         return -1;
     }
 
     if(s->resync_mb_x + s->resync_mb_y*s->mb_width + mb_num > s->mb_num){
         av_log(s->avctx, AV_LOG_ERROR, "slice below monitor ...\n");
-        ff_er_add_slice(s, s->resync_mb_x, s->resync_mb_y, s->mb_x, s->mb_y, part_a_error);
+        ff_er_add_slice(&s->er, s->resync_mb_x, s->resync_mb_y, s->mb_x, s->mb_y, part_a_error);
         return -1;
     }
 
@@ -823,15 +823,15 @@ int ff_mpeg4_decode_partitions(MpegEncContext *s)
             return -1;
         }
     }
-    ff_er_add_slice(s, s->resync_mb_x, s->resync_mb_y, s->mb_x-1, s->mb_y, part_a_end);
+    ff_er_add_slice(&s->er, s->resync_mb_x, s->resync_mb_y, s->mb_x-1, s->mb_y, part_a_end);
 
     if( mpeg4_decode_partition_b(s, mb_num) < 0){
         if(s->pict_type==AV_PICTURE_TYPE_P)
-            ff_er_add_slice(s, s->resync_mb_x, s->resync_mb_y, s->mb_x, s->mb_y, ER_DC_ERROR);
+            ff_er_add_slice(&s->er, s->resync_mb_x, s->resync_mb_y, s->mb_x, s->mb_y, ER_DC_ERROR);
         return -1;
     }else{
         if(s->pict_type==AV_PICTURE_TYPE_P)
-            ff_er_add_slice(s, s->resync_mb_x, s->resync_mb_y, s->mb_x-1, s->mb_y, ER_DC_END);
+            ff_er_add_slice(&s->er, s->resync_mb_x, s->resync_mb_y, s->mb_x-1, s->mb_y, ER_DC_END);
     }
 
     return 0;
@@ -841,7 +841,7 @@ int ff_mpeg4_decode_partitions(MpegEncContext *s)
  * Decode a block.
  * @return <0 if an error occurred
  */
-static inline int mpeg4_decode_block(MpegEncContext * s, DCTELEM * block,
+static inline int mpeg4_decode_block(MpegEncContext * s, int16_t * block,
                               int n, int coded, int intra, int rvlc)
 {
     int level, i, last, run;
@@ -1065,7 +1065,7 @@ static inline int mpeg4_decode_block(MpegEncContext * s, DCTELEM * block,
  * decode partition C of one MB.
  * @return <0 if an error occurred
  */
-static int mpeg4_decode_partitioned_mb(MpegEncContext *s, DCTELEM block[6][64])
+static int mpeg4_decode_partitioned_mb(MpegEncContext *s, int16_t block[6][64])
 {
     int cbp, mb_type;
     const int xy= s->mb_x + s->mb_y*s->mb_stride;
@@ -1148,7 +1148,7 @@ static int mpeg4_decode_partitioned_mb(MpegEncContext *s, DCTELEM block[6][64])
 }
 
 static int mpeg4_decode_mb(MpegEncContext *s,
-                      DCTELEM block[6][64])
+                      int16_t block[6][64])
 {
     int cbpc, cbpy, i, cbp, pred_x, pred_y, mx, my, dquant;
     int16_t *mot_val;
@@ -2288,7 +2288,7 @@ AVCodec ff_mpeg4_vdpau_decoder = {
     .capabilities   = CODEC_CAP_DR1 | CODEC_CAP_TRUNCATED | CODEC_CAP_DELAY |
                       CODEC_CAP_HWACCEL_VDPAU,
     .long_name      = NULL_IF_CONFIG_SMALL("MPEG-4 part 2 (VDPAU)"),
-    .pix_fmts       = (const enum PixelFormat[]){ PIX_FMT_VDPAU_MPEG4,
-                                                  PIX_FMT_NONE },
+    .pix_fmts       = (const enum AVPixelFormat[]){ AV_PIX_FMT_VDPAU_MPEG4,
+                                                  AV_PIX_FMT_NONE },
 };
 #endif

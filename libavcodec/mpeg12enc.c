@@ -51,7 +51,7 @@ static const uint8_t svcd_scan_offset_placeholder[14] = {
 };
 
 static void mpeg1_encode_block(MpegEncContext *s,
-                         DCTELEM *block,
+                         int16_t *block,
                          int component);
 static void mpeg1_encode_motion(MpegEncContext *s, int val, int f_or_b_code);    // RAL: f_code parameter added
 
@@ -111,7 +111,7 @@ static int find_frame_rate_index(MpegEncContext *s){
     int64_t d;
 
     for(i=1;i<14;i++) {
-        int64_t n0= 1001LL/avpriv_frame_rate_tab[i].den*avpriv_frame_rate_tab[i].num*s->avctx->time_base.num;
+        int64_t n0 = 1001LL / ff_mpeg12_frame_rate_tab[i].den * ff_mpeg12_frame_rate_tab[i].num * s->avctx->time_base.num;
         int64_t n1= 1001LL*s->avctx->time_base.den;
         if(s->avctx->strict_std_compliance > FF_COMPLIANCE_UNOFFICIAL && i>=9) break;
 
@@ -195,7 +195,7 @@ static void mpeg1_encode_sequence_header(MpegEncContext *s)
         if(aspect_ratio==0.0) aspect_ratio= 1.0; //pixel aspect 1:1 (VGA)
 
         if (s->current_picture.f.key_frame) {
-            AVRational framerate= avpriv_frame_rate_tab[s->frame_rate_index];
+            AVRational framerate = ff_mpeg12_frame_rate_tab[s->frame_rate_index];
 
             /* mpeg1 header repeated every gop */
             put_header(s, SEQ_START_CODE);
@@ -432,7 +432,7 @@ static inline void put_mb_modes(MpegEncContext *s, int n, int bits,
 }
 
 static av_always_inline void mpeg1_encode_mb_internal(MpegEncContext *s,
-                                                   DCTELEM block[6][64],
+                                                   int16_t block[6][64],
                                                    int motion_x, int motion_y,
                                                    int mb_block_count)
 {
@@ -656,7 +656,7 @@ static av_always_inline void mpeg1_encode_mb_internal(MpegEncContext *s,
     }
 }
 
-void ff_mpeg1_encode_mb(MpegEncContext *s, DCTELEM block[6][64], int motion_x, int motion_y)
+void ff_mpeg1_encode_mb(MpegEncContext *s, int16_t block[6][64], int motion_x, int motion_y)
 {
     if (s->chroma_format == CHROMA_420) mpeg1_encode_mb_internal(s, block, motion_x, motion_y, 6);
     else                                mpeg1_encode_mb_internal(s, block, motion_x, motion_y, 8);
@@ -839,7 +839,7 @@ static inline void encode_dc(MpegEncContext *s, int diff, int component)
 }
 
 static void mpeg1_encode_block(MpegEncContext *s,
-                               DCTELEM *block,
+                               int16_t *block,
                                int n)
 {
     int alevel, level, last_non_zero, dc, diff, i, j, run, last_index, sign;
@@ -958,9 +958,9 @@ AVCodec ff_mpeg1video_encoder = {
     .init                 = encode_init,
     .encode2              = ff_MPV_encode_picture,
     .close                = ff_MPV_encode_end,
-    .supported_framerates = avpriv_frame_rate_tab+1,
-    .pix_fmts             = (const enum PixelFormat[]){ PIX_FMT_YUV420P,
-                                                        PIX_FMT_NONE },
+    .supported_framerates = ff_mpeg12_frame_rate_tab + 1,
+    .pix_fmts             = (const enum AVPixelFormat[]){ AV_PIX_FMT_YUV420P,
+                                                        AV_PIX_FMT_NONE },
     .capabilities         = CODEC_CAP_DELAY | CODEC_CAP_SLICE_THREADS,
     .long_name            = NULL_IF_CONFIG_SMALL("MPEG-1 video"),
     .priv_class           = &mpeg1_class,
@@ -974,9 +974,9 @@ AVCodec ff_mpeg2video_encoder = {
     .init                 = encode_init,
     .encode2              = ff_MPV_encode_picture,
     .close                = ff_MPV_encode_end,
-    .supported_framerates = avpriv_frame_rate_tab + 1,
-    .pix_fmts             = (const enum PixelFormat[]){
-        PIX_FMT_YUV420P, PIX_FMT_YUV422P, PIX_FMT_NONE
+    .supported_framerates = ff_mpeg12_frame_rate_tab + 1,
+    .pix_fmts             = (const enum AVPixelFormat[]){
+        AV_PIX_FMT_YUV420P, AV_PIX_FMT_YUV422P, AV_PIX_FMT_NONE
     },
     .capabilities         = CODEC_CAP_DELAY | CODEC_CAP_SLICE_THREADS,
     .long_name            = NULL_IF_CONFIG_SMALL("MPEG-2 video"),

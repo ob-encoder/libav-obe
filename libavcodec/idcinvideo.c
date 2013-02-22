@@ -49,6 +49,7 @@
 #include <string.h>
 
 #include "avcodec.h"
+#include "internal.h"
 #include "libavutil/internal.h"
 
 #define HUFFMAN_TABLE_SIZE 64 * 1024
@@ -151,7 +152,7 @@ static av_cold int idcin_decode_init(AVCodecContext *avctx)
     unsigned char *histograms;
 
     s->avctx = avctx;
-    avctx->pix_fmt = PIX_FMT_PAL8;
+    avctx->pix_fmt = AV_PIX_FMT_PAL8;
 
     /* make sure the Huffman tables make it */
     if (s->avctx->extradata_size != HUFFMAN_TABLE_SIZE) {
@@ -167,7 +168,7 @@ static av_cold int idcin_decode_init(AVCodecContext *avctx)
         huff_build_tree(s, i);
     }
 
-    s->frame.data[0] = NULL;
+    avcodec_get_frame_defaults(&s->frame);
 
     return 0;
 }
@@ -209,7 +210,7 @@ static void idcin_decode_vlcs(IdcinContext *s)
 }
 
 static int idcin_decode_frame(AVCodecContext *avctx,
-                              void *data, int *data_size,
+                              void *data, int *got_frame,
                               AVPacket *avpkt)
 {
     const uint8_t *buf = avpkt->data;
@@ -223,7 +224,7 @@ static int idcin_decode_frame(AVCodecContext *avctx,
     if (s->frame.data[0])
         avctx->release_buffer(avctx, &s->frame);
 
-    if (avctx->get_buffer(avctx, &s->frame)) {
+    if (ff_get_buffer(avctx, &s->frame)) {
         av_log(avctx, AV_LOG_ERROR, "  id CIN Video: get_buffer() failed\n");
         return -1;
     }
@@ -237,7 +238,7 @@ static int idcin_decode_frame(AVCodecContext *avctx,
     /* make the palette available on the way out */
     memcpy(s->frame.data[1], s->pal, AVPALETTE_SIZE);
 
-    *data_size = sizeof(AVFrame);
+    *got_frame = 1;
     *(AVFrame*)data = s->frame;
 
     /* report that the buffer was completely consumed */

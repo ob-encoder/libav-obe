@@ -104,6 +104,7 @@ static av_cold void uninit(AVFilterContext *ctx)
 {
     FPSContext *s = ctx->priv;
     if (s->fifo) {
+        s->drop += av_fifo_size(s->fifo) / sizeof(AVFilterBufferRef*);
         flush_fifo(s->fifo);
         av_fifo_free(s->fifo);
     }
@@ -144,9 +145,7 @@ static int request_frame(AVFilterLink *outlink)
             buf->pts = av_rescale_q(s->first_pts, ctx->inputs[0]->time_base,
                                     outlink->time_base) + s->frames_out;
 
-            if ((ret = ff_start_frame(outlink, buf)) < 0 ||
-                (ret = ff_draw_slice(outlink, 0, outlink->h, 1)) < 0 ||
-                (ret = ff_end_frame(outlink)) < 0)
+            if ((ret = ff_filter_frame(outlink, buf)) < 0)
                 return ret;
 
             s->frames_out++;
@@ -171,16 +170,14 @@ static int write_to_fifo(AVFifoBuffer *fifo, AVFilterBufferRef *buf)
     return 0;
 }
 
-static int end_frame(AVFilterLink *inlink)
+static int filter_frame(AVFilterLink *inlink, AVFilterBufferRef *buf)
 {
     AVFilterContext    *ctx = inlink->dst;
     FPSContext           *s = ctx->priv;
     AVFilterLink   *outlink = ctx->outputs[0];
-    AVFilterBufferRef  *buf = inlink->cur_buf;
     int64_t delta;
     int i, ret;
 
-    inlink->cur_buf = NULL;
     s->frames_in++;
     /* discard frames until we get the first timestamp */
     if (s->pts == AV_NOPTS_VALUE) {
@@ -251,9 +248,7 @@ static int end_frame(AVFilterLink *inlink)
         buf_out->pts = av_rescale_q(s->first_pts, inlink->time_base,
                                     outlink->time_base) + s->frames_out;
 
-        if ((ret = ff_start_frame(outlink, buf_out)) < 0 ||
-            (ret = ff_draw_slice(outlink, 0, outlink->h, 1)) < 0 ||
-            (ret = ff_end_frame(outlink)) < 0) {
+        if ((ret = ff_filter_frame(outlink, buf_out)) < 0) {
             avfilter_unref_bufferp(&buf);
             return ret;
         }
@@ -268,15 +263,24 @@ static int end_frame(AVFilterLink *inlink)
     return ret;
 }
 
-static int null_start_frame(AVFilterLink *link, AVFilterBufferRef *buf)
-{
-    return 0;
-}
+static const AVFilterPad avfilter_vf_fps_inputs[] = {
+    {
+        .name        = "default",
+        .type        = AVMEDIA_TYPE_VIDEO,
+        .filter_frame = filter_frame,
+    },
+    { NULL }
+};
 
-static int null_draw_slice(AVFilterLink *link, int y, int h, int slice_dir)
-{
-    return 0;
-}
+static const AVFilterPad avfilter_vf_fps_outputs[] = {
+    {
+        .name          = "default",
+        .type          = AVMEDIA_TYPE_VIDEO,
+        .request_frame = request_frame,
+        .config_props  = config_props
+    },
+    { NULL }
+};
 
 AVFilter avfilter_vf_fps = {
     .name        = "fps",
@@ -287,15 +291,6 @@ AVFilter avfilter_vf_fps = {
 
     .priv_size = sizeof(FPSContext),
 
-    .inputs    = (const AVFilterPad[]) {{ .name            = "default",
-                                          .type            = AVMEDIA_TYPE_VIDEO,
-                                          .start_frame     = null_start_frame,
-                                          .draw_slice      = null_draw_slice,
-                                          .end_frame       = end_frame, },
-                                        { .name = NULL}},
-    .outputs   = (const AVFilterPad[]) {{ .name            = "default",
-                                          .type            = AVMEDIA_TYPE_VIDEO,
-                                          .request_frame   = request_frame,
-                                          .config_props    = config_props},
-                                        { .name = NULL}},
+    .inputs    = avfilter_vf_fps_inputs,
+    .outputs   = avfilter_vf_fps_outputs,
 };

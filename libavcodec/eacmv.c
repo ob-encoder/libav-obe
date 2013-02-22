@@ -32,6 +32,7 @@
 #include "libavutil/intreadwrite.h"
 #include "libavutil/imgutils.h"
 #include "avcodec.h"
+#include "internal.h"
 
 typedef struct CmvContext {
     AVCodecContext *avctx;
@@ -45,7 +46,7 @@ typedef struct CmvContext {
 static av_cold int cmv_decode_init(AVCodecContext *avctx){
     CmvContext *s = avctx->priv_data;
     s->avctx = avctx;
-    avctx->pix_fmt = PIX_FMT_PAL8;
+    avctx->pix_fmt = AV_PIX_FMT_PAL8;
     return 0;
 }
 
@@ -146,7 +147,7 @@ static void cmv_process_header(CmvContext *s, const uint8_t *buf, const uint8_t 
 #define MVIh_TAG MKTAG('M', 'V', 'I', 'h')
 
 static int cmv_decode_frame(AVCodecContext *avctx,
-                            void *data, int *data_size,
+                            void *data, int *got_frame,
                             AVPacket *avpkt)
 {
     const uint8_t *buf = avpkt->data;
@@ -173,7 +174,7 @@ static int cmv_decode_frame(AVCodecContext *avctx,
 
     s->frame.reference = 1;
     s->frame.buffer_hints = FF_BUFFER_HINTS_VALID;
-    if (avctx->get_buffer(avctx, &s->frame)<0) {
+    if (ff_get_buffer(avctx, &s->frame)<0) {
         av_log(avctx, AV_LOG_ERROR, "get_buffer() failed\n");
         return -1;
     }
@@ -191,7 +192,7 @@ static int cmv_decode_frame(AVCodecContext *avctx,
         cmv_decode_intra(s, buf+2, buf_end);
     }
 
-    *data_size = sizeof(AVFrame);
+    *got_frame = 1;
     *(AVFrame*)data = s->frame;
 
     return buf_size;

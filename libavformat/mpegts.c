@@ -665,19 +665,6 @@ static void new_pes_packet(PESContext *pes, AVPacket *pkt)
     pes->flags = 0;
 }
 
-static uint64_t get_bits64(GetBitContext *gb, int bits)
-{
-    uint64_t ret = 0;
-    while (bits > 17) {
-        ret <<= 17;
-        ret |= get_bits(gb, 17);
-        bits -= 17;
-    }
-    ret <<= bits;
-    ret |= get_bits(gb, bits);
-    return ret;
-}
-
 static int read_sl_header(PESContext *pes, SLConfigDescr *sl, const uint8_t *buf, int buf_size)
 {
     GetBitContext gb;
@@ -2049,16 +2036,20 @@ static int mpegts_read_packet(AVFormatContext *s,
     return ret;
 }
 
-static int mpegts_read_close(AVFormatContext *s)
+static void mpegts_free(MpegTSContext *ts)
 {
-    MpegTSContext *ts = s->priv_data;
     int i;
 
     clear_programs(ts);
 
     for(i=0;i<NB_PID_MAX;i++)
         if (ts->pids[i]) mpegts_close_filter(ts, ts->pids[i]);
+}
 
+static int mpegts_read_close(AVFormatContext *s)
+{
+    MpegTSContext *ts = s->priv_data;
+    mpegts_free(ts);
     return 0;
 }
 
@@ -2170,10 +2161,7 @@ int ff_mpegts_parse_packet(MpegTSContext *ts, AVPacket *pkt,
 
 void ff_mpegts_parse_close(MpegTSContext *ts)
 {
-    int i;
-
-    for(i=0;i<NB_PID_MAX;i++)
-        av_free(ts->pids[i]);
+    mpegts_free(ts);
     av_free(ts);
 }
 

@@ -37,7 +37,7 @@
 #endif
 
 #include "libavcodec/avcodec.h"
-#include "libavutil/audioconvert.h"
+#include "libavutil/channel_layout.h"
 #include "libavutil/common.h"
 #include "libavutil/imgutils.h"
 #include "libavutil/mathematics.h"
@@ -345,7 +345,7 @@ static void video_encode_example(const char *filename)
     c->time_base= (AVRational){1,25};
     c->gop_size = 10; /* emit one intra frame every ten frames */
     c->max_b_frames=1;
-    c->pix_fmt = PIX_FMT_YUV420P;
+    c->pix_fmt = AV_PIX_FMT_YUV420P;
 
     /* open it */
     if (avcodec_open2(c, codec, NULL) < 0) {

@@ -26,14 +26,15 @@
  */
 
 #define BITSTREAM_READER_LE
-#include "libavutil/audioconvert.h"
-#include "libavutil/lzo.h"
+#include "libavutil/channel_layout.h"
+#include "libavutil/mem.h"
 #include "libavutil/opt.h"
 #include "avcodec.h"
 #include "get_bits.h"
 #include "acelp_vectors.h"
 #include "celp_filters.h"
 #include "g723_1_data.h"
+#include "internal.h"
 
 #define CNG_RANDOM_SEED 12345
 
@@ -75,7 +76,6 @@ typedef struct {
 
 typedef struct g723_1_context {
     AVClass *class;
-    AVFrame frame;
 
     G723_1_Subframe subframe[4];
     enum FrameType cur_frame_type;
@@ -115,9 +115,6 @@ static av_cold int g723_1_decode_init(AVCodecContext *avctx)
     avctx->channels       = 1;
     avctx->sample_rate    = 8000;
     p->pf_gain            = 1 << 12;
-
-    avcodec_get_frame_defaults(&p->frame);
-    avctx->coded_frame    = &p->frame;
 
     memcpy(p->prev_lsp, dc_lsp, LPC_ORDER * sizeof(*p->prev_lsp));
     memcpy(p->sid_lsp,  dc_lsp, LPC_ORDER * sizeof(*p->sid_lsp));
@@ -1190,6 +1187,7 @@ static int g723_1_decode_frame(AVCodecContext *avctx, void *data,
                                int *got_frame_ptr, AVPacket *avpkt)
 {
     G723_1_Context *p  = avctx->priv_data;
+    AVFrame *frame     = data;
     const uint8_t *buf = avpkt->data;
     int buf_size       = avpkt->size;
     int dec_mode       = buf[0] & 3;
@@ -1219,13 +1217,13 @@ static int g723_1_decode_frame(AVCodecContext *avctx, void *data,
             p->cur_frame_type = UNTRANSMITTED_FRAME;
     }
 
-    p->frame.nb_samples = FRAME_LEN;
-    if ((ret = avctx->get_buffer(avctx, &p->frame)) < 0) {
+    frame->nb_samples = FRAME_LEN;
+    if ((ret = ff_get_buffer(avctx, frame)) < 0) {
          av_log(avctx, AV_LOG_ERROR, "get_buffer() failed\n");
          return ret;
     }
 
-    out = (int16_t *)p->frame.data[0];
+    out = (int16_t *)frame->data[0];
 
     if (p->cur_frame_type == ACTIVE_FRAME) {
         if (!bad_frame)
@@ -1296,7 +1294,7 @@ static int g723_1_decode_frame(AVCodecContext *avctx, void *data,
                        (FRAME_LEN + PITCH_MAX) * sizeof(*p->excitation));
                 memset(p->prev_excitation, 0,
                        PITCH_MAX * sizeof(*p->excitation));
-                memset(p->frame.data[0], 0,
+                memset(frame->data[0], 0,
                        (FRAME_LEN + LPC_ORDER) * sizeof(int16_t));
             } else {
                 int16_t *buf = p->audio + LPC_ORDER;
@@ -1345,8 +1343,7 @@ static int g723_1_decode_frame(AVCodecContext *avctx, void *data,
             out[i] = av_clip_int16(p->audio[LPC_ORDER + i] << 1);
     }
 
-    *got_frame_ptr   = 1;
-    *(AVFrame *)data = p->frame;
+    *got_frame_ptr = 1;
 
     return frame_size[dec_mode];
 }
@@ -1376,6 +1373,6 @@ AVCodec ff_g723_1_decoder = {
     .init           = g723_1_decode_init,
     .decode         = g723_1_decode_frame,
     .long_name      = NULL_IF_CONFIG_SMALL("G.723.1"),
-    .capabilities   = CODEC_CAP_SUBFRAMES,
+    .capabilities   = CODEC_CAP_SUBFRAMES | CODEC_CAP_DR1,
     .priv_class     = &g723_1dec_class,
 };

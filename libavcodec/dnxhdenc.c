@@ -26,6 +26,7 @@
 //#define DEBUG
 #define RC_VARIANCE 1 // use variance or ssd for fast rc
 
+#include "libavutil/internal.h"
 #include "libavutil/opt.h"
 #include "avcodec.h"
 #include "dsputil.h"
@@ -44,7 +45,7 @@ static const AVClass class = { "dnxhd", av_default_item_name, options, LIBAVUTIL
 
 #define LAMBDA_FRAC_BITS 10
 
-static void dnxhd_8bit_get_pixels_8x4_sym(DCTELEM *restrict block, const uint8_t *pixels, int line_size)
+static void dnxhd_8bit_get_pixels_8x4_sym(int16_t *restrict block, const uint8_t *pixels, int line_size)
 {
     int i;
     for (i = 0; i < 4; i++) {
@@ -61,7 +62,7 @@ static void dnxhd_8bit_get_pixels_8x4_sym(DCTELEM *restrict block, const uint8_t
     memcpy(block + 24, block - 32, sizeof(*block) * 8);
 }
 
-static av_always_inline void dnxhd_10bit_get_pixels_8x4_sym(DCTELEM *restrict block, const uint8_t *pixels, int line_size)
+static av_always_inline void dnxhd_10bit_get_pixels_8x4_sym(int16_t *restrict block, const uint8_t *pixels, int line_size)
 {
     int i;
 
@@ -73,7 +74,7 @@ static av_always_inline void dnxhd_10bit_get_pixels_8x4_sym(DCTELEM *restrict bl
     }
 }
 
-static int dnxhd_10bit_dct_quantize(MpegEncContext *ctx, DCTELEM *block,
+static int dnxhd_10bit_dct_quantize(MpegEncContext *ctx, int16_t *block,
                                     int n, int qscale, int *overflow)
 {
     const uint8_t *scantable= ctx->intra_scantable.scantable;
@@ -233,10 +234,10 @@ static int dnxhd_encode_init(AVCodecContext *avctx)
     int i, index, bit_depth;
 
     switch (avctx->pix_fmt) {
-    case PIX_FMT_YUV422P:
+    case AV_PIX_FMT_YUV422P:
         bit_depth = 8;
         break;
-    case PIX_FMT_YUV422P10:
+    case AV_PIX_FMT_YUV422P10:
         bit_depth = 10;
         break;
     default:
@@ -370,7 +371,7 @@ static av_always_inline void dnxhd_encode_dc(DNXHDEncContext *ctx, int diff)
              (ctx->cid_table->dc_codes[nbits]<<nbits) + (diff & ((1 << nbits) - 1)));
 }
 
-static av_always_inline void dnxhd_encode_block(DNXHDEncContext *ctx, DCTELEM *block, int last_index, int n)
+static av_always_inline void dnxhd_encode_block(DNXHDEncContext *ctx, int16_t *block, int last_index, int n)
 {
     int last_non_zero = 0;
     int slevel, i, j;
@@ -393,7 +394,7 @@ static av_always_inline void dnxhd_encode_block(DNXHDEncContext *ctx, DCTELEM *b
     put_bits(&ctx->m.pb, ctx->vlc_bits[0], ctx->vlc_codes[0]); // EOB
 }
 
-static av_always_inline void dnxhd_unquantize_c(DNXHDEncContext *ctx, DCTELEM *block, int n, int qscale, int last_index)
+static av_always_inline void dnxhd_unquantize_c(DNXHDEncContext *ctx, int16_t *block, int n, int qscale, int last_index)
 {
     const uint8_t *weight_matrix;
     int level;
@@ -434,7 +435,7 @@ static av_always_inline void dnxhd_unquantize_c(DNXHDEncContext *ctx, DCTELEM *b
     }
 }
 
-static av_always_inline int dnxhd_ssd_block(DCTELEM *qblock, DCTELEM *block)
+static av_always_inline int dnxhd_ssd_block(int16_t *qblock, int16_t *block)
 {
     int score = 0;
     int i;
@@ -443,7 +444,7 @@ static av_always_inline int dnxhd_ssd_block(DCTELEM *qblock, DCTELEM *block)
     return score;
 }
 
-static av_always_inline int dnxhd_calc_ac_bits(DNXHDEncContext *ctx, DCTELEM *block, int last_index)
+static av_always_inline int dnxhd_calc_ac_bits(DNXHDEncContext *ctx, int16_t *block, int last_index)
 {
     int last_non_zero = 0;
     int bits = 0;
@@ -512,7 +513,7 @@ static int dnxhd_calc_bits_thread(AVCodecContext *avctx, void *arg, int jobnr, i
     DNXHDEncContext *ctx = avctx->priv_data;
     int mb_y = jobnr, mb_x;
     int qscale = ctx->qscale;
-    LOCAL_ALIGNED_16(DCTELEM, block, [64]);
+    LOCAL_ALIGNED_16(int16_t, block, [64]);
     ctx = ctx->thread[threadnr];
 
     ctx->m.last_dc[0] =
@@ -529,7 +530,7 @@ static int dnxhd_calc_bits_thread(AVCodecContext *avctx, void *arg, int jobnr, i
         dnxhd_get_blocks(ctx, mb_x, mb_y);
 
         for (i = 0; i < 8; i++) {
-            DCTELEM *src_block = ctx->blocks[i];
+            int16_t *src_block = ctx->blocks[i];
             int overflow, nbits, diff, last_index;
             int n = dnxhd_switch_matrix(ctx, i);
 
@@ -578,7 +579,7 @@ static int dnxhd_encode_thread(AVCodecContext *avctx, void *arg, int jobnr, int 
         dnxhd_get_blocks(ctx, mb_x, mb_y);
 
         for (i = 0; i < 8; i++) {
-            DCTELEM *block = ctx->blocks[i];
+            int16_t *block = ctx->blocks[i];
             int overflow, n = dnxhd_switch_matrix(ctx, i);
             int last_index = ctx->m.dct_quantize(&ctx->m, block, i,
                                                  qscale, &overflow);
@@ -615,14 +616,35 @@ static void dnxhd_setup_threads_slices(DNXHDEncContext *ctx)
 static int dnxhd_mb_var_thread(AVCodecContext *avctx, void *arg, int jobnr, int threadnr)
 {
     DNXHDEncContext *ctx = avctx->priv_data;
-    int mb_y = jobnr, mb_x;
+    int mb_y = jobnr, mb_x, x, y;
+    int partial_last_row = (mb_y == ctx->m.mb_height - 1) &&
+                           ((avctx->height >> ctx->interlaced) & 0xF);
+
     ctx = ctx->thread[threadnr];
     if (ctx->cid_table->bit_depth == 8) {
         uint8_t *pix = ctx->thread[0]->src[0] + ((mb_y<<4) * ctx->m.linesize);
         for (mb_x = 0; mb_x < ctx->m.mb_width; ++mb_x, pix += 16) {
             unsigned mb  = mb_y * ctx->m.mb_width + mb_x;
-            int sum = ctx->m.dsp.pix_sum(pix, ctx->m.linesize);
-            int varc = (ctx->m.dsp.pix_norm1(pix, ctx->m.linesize) - (((unsigned)sum*sum)>>8)+128)>>8;
+            int sum;
+            int varc;
+
+            if (!partial_last_row && mb_x * 16 <= avctx->width - 16) {
+                sum  = ctx->m.dsp.pix_sum(pix, ctx->m.linesize);
+                varc = ctx->m.dsp.pix_norm1(pix, ctx->m.linesize);
+            } else {
+                int bw = FFMIN(avctx->width - 16 * mb_x, 16);
+                int bh = FFMIN((avctx->height >> ctx->interlaced) - 16 * mb_y, 16);
+                sum = varc = 0;
+                for (y = 0; y < bh; y++) {
+                    for (x = 0; x < bw; x++) {
+                        uint8_t val = pix[x + y * ctx->m.linesize];
+                        sum  += val;
+                        varc += val * val;
+                    }
+                }
+            }
+            varc = (varc - (((unsigned)sum * sum) >> 8) + 128) >> 8;
+
             ctx->mb_cmp[mb].value = varc;
             ctx->mb_cmp[mb].mb = mb;
         }
@@ -1005,9 +1027,9 @@ AVCodec ff_dnxhd_encoder = {
     .encode2        = dnxhd_encode_picture,
     .close          = dnxhd_encode_end,
     .capabilities   = CODEC_CAP_SLICE_THREADS,
-    .pix_fmts       = (const enum PixelFormat[]){ PIX_FMT_YUV422P,
-                                                  PIX_FMT_YUV422P10,
-                                                  PIX_FMT_NONE },
+    .pix_fmts       = (const enum AVPixelFormat[]){ AV_PIX_FMT_YUV422P,
+                                                  AV_PIX_FMT_YUV422P10,
+                                                  AV_PIX_FMT_NONE },
     .long_name      = NULL_IF_CONFIG_SMALL("VC3/DNxHD"),
     .priv_class     = &class,
 };

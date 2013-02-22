@@ -124,13 +124,13 @@ static av_cold void uninit(AVFilterContext *ctx)
 
 static int query_formats(AVFilterContext *ctx)
 {
-    enum PixelFormat pix_fmts[] = {
-        PIX_FMT_YUV444P,  PIX_FMT_YUV422P,  PIX_FMT_YUV420P,
-        PIX_FMT_YUV411P,  PIX_FMT_YUV410P,  PIX_FMT_YUVA420P,
-        PIX_FMT_YUV440P,  PIX_FMT_GRAY8,
-        PIX_FMT_YUVJ444P, PIX_FMT_YUVJ422P, PIX_FMT_YUVJ420P,
-        PIX_FMT_YUVJ440P,
-        PIX_FMT_NONE
+    enum AVPixelFormat pix_fmts[] = {
+        AV_PIX_FMT_YUV444P,  AV_PIX_FMT_YUV422P,  AV_PIX_FMT_YUV420P,
+        AV_PIX_FMT_YUV411P,  AV_PIX_FMT_YUV410P,  AV_PIX_FMT_YUVA420P,
+        AV_PIX_FMT_YUV440P,  AV_PIX_FMT_GRAY8,
+        AV_PIX_FMT_YUVJ444P, AV_PIX_FMT_YUVJ422P, AV_PIX_FMT_YUVJ420P,
+        AV_PIX_FMT_YUVJ440P,
+        AV_PIX_FMT_NONE
     };
 
     ff_set_common_formats(ctx, ff_make_format_list(pix_fmts));
@@ -139,7 +139,7 @@ static int query_formats(AVFilterContext *ctx)
 
 static int config_input(AVFilterLink *inlink)
 {
-    const AVPixFmtDescriptor *desc = &av_pix_fmt_descriptors[inlink->format];
+    const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(inlink->format);
     AVFilterContext    *ctx = inlink->dst;
     BoxBlurContext *boxblur = ctx->priv;
     int w = inlink->w, h = inlink->h;
@@ -307,32 +307,59 @@ static void vblur(uint8_t *dst, int dst_linesize, const uint8_t *src, int src_li
                    h, radius, power, temp);
 }
 
-static int draw_slice(AVFilterLink *inlink, int y0, int h0, int slice_dir)
+static int filter_frame(AVFilterLink *inlink, AVFilterBufferRef *in)
 {
     AVFilterContext *ctx = inlink->dst;
     BoxBlurContext *boxblur = ctx->priv;
     AVFilterLink *outlink = inlink->dst->outputs[0];
-    AVFilterBufferRef *inpicref  = inlink ->cur_buf;
-    AVFilterBufferRef *outpicref = outlink->out_buf;
+    AVFilterBufferRef *out;
     int plane;
-    int cw = inlink->w >> boxblur->hsub, ch = h0 >> boxblur->vsub;
+    int cw = inlink->w >> boxblur->hsub, ch = in->video->h >> boxblur->vsub;
     int w[4] = { inlink->w, cw, cw, inlink->w };
-    int h[4] = { h0, ch, ch, h0 };
+    int h[4] = { in->video->h, ch, ch, in->video->h };
 
-    for (plane = 0; inpicref->data[plane] && plane < 4; plane++)
-        hblur(outpicref->data[plane], outpicref->linesize[plane],
-              inpicref ->data[plane], inpicref ->linesize[plane],
+    out = ff_get_video_buffer(outlink, AV_PERM_WRITE, outlink->w, outlink->h);
+    if (!out) {
+        avfilter_unref_bufferp(&in);
+        return AVERROR(ENOMEM);
+    }
+    avfilter_copy_buffer_ref_props(out, in);
+
+    for (plane = 0; in->data[plane] && plane < 4; plane++)
+        hblur(out->data[plane], out->linesize[plane],
+              in ->data[plane], in ->linesize[plane],
               w[plane], h[plane], boxblur->radius[plane], boxblur->power[plane],
               boxblur->temp);
 
-    for (plane = 0; inpicref->data[plane] && plane < 4; plane++)
-        vblur(outpicref->data[plane], outpicref->linesize[plane],
-              outpicref->data[plane], outpicref->linesize[plane],
+    for (plane = 0; in->data[plane] && plane < 4; plane++)
+        vblur(out->data[plane], out->linesize[plane],
+              out->data[plane], out->linesize[plane],
               w[plane], h[plane], boxblur->radius[plane], boxblur->power[plane],
               boxblur->temp);
 
-    return ff_draw_slice(outlink, y0, h0, slice_dir);
+    avfilter_unref_bufferp(&in);
+
+    return ff_filter_frame(outlink, out);
 }
+
+static const AVFilterPad avfilter_vf_boxblur_inputs[] = {
+    {
+        .name         = "default",
+        .type         = AVMEDIA_TYPE_VIDEO,
+        .config_props = config_input,
+        .filter_frame = filter_frame,
+        .min_perms    = AV_PERM_READ
+    },
+    { NULL }
+};
+
+static const AVFilterPad avfilter_vf_boxblur_outputs[] = {
+    {
+        .name = "default",
+        .type = AVMEDIA_TYPE_VIDEO,
+    },
+    { NULL }
+};
 
 AVFilter avfilter_vf_boxblur = {
     .name          = "boxblur",
@@ -342,13 +369,6 @@ AVFilter avfilter_vf_boxblur = {
     .uninit        = uninit,
     .query_formats = query_formats,
 
-    .inputs    = (const AVFilterPad[]) {{ .name             = "default",
-                                          .type             = AVMEDIA_TYPE_VIDEO,
-                                          .config_props     = config_input,
-                                          .draw_slice       = draw_slice,
-                                          .min_perms        = AV_PERM_READ },
-                                        { .name = NULL}},
-    .outputs   = (const AVFilterPad[]) {{ .name             = "default",
-                                          .type             = AVMEDIA_TYPE_VIDEO, },
-                                        { .name = NULL}},
+    .inputs    = avfilter_vf_boxblur_inputs,
+    .outputs   = avfilter_vf_boxblur_outputs,
 };

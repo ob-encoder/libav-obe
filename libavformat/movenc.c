@@ -305,8 +305,7 @@ static int mov_write_esds_tag(AVIOContext *pb, MOVTrack *track) // Basic
     else
         avio_w8(pb, 0x11); // flags (= Visualstream)
 
-    avio_w8(pb,  track->enc->rc_buffer_size>>(3+16));      // Buffersize DB (24 bits)
-    avio_wb16(pb, (track->enc->rc_buffer_size>>3)&0xFFFF); // Buffersize DB
+    avio_wb24(pb, track->enc->rc_buffer_size >> 3); // Buffersize DB
 
     avio_wb32(pb, FFMAX(track->enc->bit_rate, track->enc->rc_max_rate)); // maxbitrate (FIXME should be max rate in any 1 sec window)
     if(track->enc->rc_max_rate != track->enc->rc_min_rate || track->enc->rc_min_rate==0)
@@ -778,10 +777,10 @@ static int mov_get_dv_codec_tag(AVFormatContext *s, MOVTrack *track)
 
     if (track->enc->width == 720) /* SD */
         if (track->enc->height == 480) /* NTSC */
-            if  (track->enc->pix_fmt == PIX_FMT_YUV422P) tag = MKTAG('d','v','5','n');
+            if  (track->enc->pix_fmt == AV_PIX_FMT_YUV422P) tag = MKTAG('d','v','5','n');
             else                                         tag = MKTAG('d','v','c',' ');
-        else if (track->enc->pix_fmt == PIX_FMT_YUV422P) tag = MKTAG('d','v','5','p');
-        else if (track->enc->pix_fmt == PIX_FMT_YUV420P) tag = MKTAG('d','v','c','p');
+        else if (track->enc->pix_fmt == AV_PIX_FMT_YUV422P) tag = MKTAG('d','v','5','p');
+        else if (track->enc->pix_fmt == AV_PIX_FMT_YUV420P) tag = MKTAG('d','v','c','p');
         else                                             tag = MKTAG('d','v','p','p');
     else if (track->enc->height == 720) /* HD 720 line */
         if  (track->enc->time_base.den == 50)            tag = MKTAG('d','v','h','q');
@@ -798,24 +797,24 @@ static int mov_get_dv_codec_tag(AVFormatContext *s, MOVTrack *track)
 }
 
 static const struct {
-    enum PixelFormat pix_fmt;
+    enum AVPixelFormat pix_fmt;
     uint32_t tag;
     unsigned bps;
 } mov_pix_fmt_tags[] = {
-    { PIX_FMT_YUYV422, MKTAG('y','u','v','s'),  0 },
-    { PIX_FMT_UYVY422, MKTAG('2','v','u','y'),  0 },
-    { PIX_FMT_RGB555BE,MKTAG('r','a','w',' '), 16 },
-    { PIX_FMT_RGB555LE,MKTAG('L','5','5','5'), 16 },
-    { PIX_FMT_RGB565LE,MKTAG('L','5','6','5'), 16 },
-    { PIX_FMT_RGB565BE,MKTAG('B','5','6','5'), 16 },
-    { PIX_FMT_GRAY16BE,MKTAG('b','1','6','g'), 16 },
-    { PIX_FMT_RGB24,   MKTAG('r','a','w',' '), 24 },
-    { PIX_FMT_BGR24,   MKTAG('2','4','B','G'), 24 },
-    { PIX_FMT_ARGB,    MKTAG('r','a','w',' '), 32 },
-    { PIX_FMT_BGRA,    MKTAG('B','G','R','A'), 32 },
-    { PIX_FMT_RGBA,    MKTAG('R','G','B','A'), 32 },
-    { PIX_FMT_ABGR,    MKTAG('A','B','G','R'), 32 },
-    { PIX_FMT_RGB48BE, MKTAG('b','4','8','r'), 48 },
+    { AV_PIX_FMT_YUYV422, MKTAG('y','u','v','s'),  0 },
+    { AV_PIX_FMT_UYVY422, MKTAG('2','v','u','y'),  0 },
+    { AV_PIX_FMT_RGB555BE,MKTAG('r','a','w',' '), 16 },
+    { AV_PIX_FMT_RGB555LE,MKTAG('L','5','5','5'), 16 },
+    { AV_PIX_FMT_RGB565LE,MKTAG('L','5','6','5'), 16 },
+    { AV_PIX_FMT_RGB565BE,MKTAG('B','5','6','5'), 16 },
+    { AV_PIX_FMT_GRAY16BE,MKTAG('b','1','6','g'), 16 },
+    { AV_PIX_FMT_RGB24,   MKTAG('r','a','w',' '), 24 },
+    { AV_PIX_FMT_BGR24,   MKTAG('2','4','B','G'), 24 },
+    { AV_PIX_FMT_ARGB,    MKTAG('r','a','w',' '), 32 },
+    { AV_PIX_FMT_BGRA,    MKTAG('B','G','R','A'), 32 },
+    { AV_PIX_FMT_RGBA,    MKTAG('R','G','B','A'), 32 },
+    { AV_PIX_FMT_ABGR,    MKTAG('A','B','G','R'), 32 },
+    { AV_PIX_FMT_RGB48BE, MKTAG('b','4','8','r'), 48 },
 };
 
 static int mov_get_rawvideo_codec_tag(AVFormatContext *s, MOVTrack *track)
@@ -1536,13 +1535,16 @@ static int mov_write_uuid_tag_psp(AVIOContext *pb, MOVTrack *mov)
     return 0x34;
 }
 
-static int mov_write_udta_sdp(AVIOContext *pb, AVFormatContext *ctx, int index)
+static int mov_write_udta_sdp(AVIOContext *pb, MOVTrack *track)
 {
+
+    AVFormatContext *ctx = track->rtp_ctx;
     char buf[1000] = "";
     int len;
 
-    ff_sdp_write_media(buf, sizeof(buf), ctx->streams[0]->codec, NULL, NULL, 0, 0, ctx);
-    av_strlcatf(buf, sizeof(buf), "a=control:streamid=%d\r\n", index);
+    ff_sdp_write_media(buf, sizeof(buf), ctx->streams[0], track->src_track,
+                       NULL, NULL, 0, 0, ctx);
+    av_strlcatf(buf, sizeof(buf), "a=control:streamid=%d\r\n", track->track_id);
     len = strlen(buf);
 
     avio_wb32(pb, len + 24);
@@ -1573,7 +1575,7 @@ static int mov_write_trak_tag(AVIOContext *pb, MOVMuxContext *mov,
     if (track->mode == MODE_PSP)
         mov_write_uuid_tag_psp(pb,track);  // PSP Movies require this uuid box
     if (track->tag == MKTAG('r','t','p',' '))
-        mov_write_udta_sdp(pb, track->rtp_ctx, track->track_id);
+        mov_write_udta_sdp(pb, track);
     if (track->enc->codec_type == AVMEDIA_TYPE_VIDEO && track->mode == MODE_MOV) {
         double sample_aspect_ratio = av_q2d(st->sample_aspect_ratio);
         if (0.0 != sample_aspect_ratio && 1.0 != sample_aspect_ratio)

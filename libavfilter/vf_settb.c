@@ -108,22 +108,40 @@ static int config_output_props(AVFilterLink *outlink)
     return 0;
 }
 
-static int start_frame(AVFilterLink *inlink, AVFilterBufferRef *picref)
+static int filter_frame(AVFilterLink *inlink, AVFilterBufferRef *frame)
 {
     AVFilterContext *ctx = inlink->dst;
     AVFilterLink *outlink = ctx->outputs[0];
 
     if (av_cmp_q(inlink->time_base, outlink->time_base)) {
-        int64_t orig_pts = picref->pts;
-        picref->pts = av_rescale_q(picref->pts, inlink->time_base, outlink->time_base);
+        int64_t orig_pts = frame->pts;
+        frame->pts = av_rescale_q(frame->pts, inlink->time_base, outlink->time_base);
         av_log(ctx, AV_LOG_DEBUG, "tb:%d/%d pts:%"PRId64" -> tb:%d/%d pts:%"PRId64"\n",
                inlink ->time_base.num, inlink ->time_base.den, orig_pts,
-               outlink->time_base.num, outlink->time_base.den, picref->pts);
+               outlink->time_base.num, outlink->time_base.den, frame->pts);
     }
-    inlink->cur_buf = NULL;
 
-    return ff_start_frame(outlink, picref);
+    return ff_filter_frame(outlink, frame);
 }
+
+static const AVFilterPad avfilter_vf_settb_inputs[] = {
+    {
+        .name             = "default",
+        .type             = AVMEDIA_TYPE_VIDEO,
+        .get_video_buffer = ff_null_get_video_buffer,
+        .filter_frame     = filter_frame,
+    },
+    { NULL }
+};
+
+static const AVFilterPad avfilter_vf_settb_outputs[] = {
+    {
+        .name         = "default",
+        .type         = AVMEDIA_TYPE_VIDEO,
+        .config_props = config_output_props,
+    },
+    { NULL }
+};
 
 AVFilter avfilter_vf_settb = {
     .name      = "settb",
@@ -132,15 +150,7 @@ AVFilter avfilter_vf_settb = {
 
     .priv_size = sizeof(SetTBContext),
 
-    .inputs    = (const AVFilterPad[]) {{ .name             = "default",
-                                          .type             = AVMEDIA_TYPE_VIDEO,
-                                          .get_video_buffer = ff_null_get_video_buffer,
-                                          .start_frame      = start_frame,
-                                          .end_frame        = ff_null_end_frame },
-                                        { .name = NULL }},
+    .inputs    = avfilter_vf_settb_inputs,
 
-    .outputs   = (const AVFilterPad[]) {{ .name            = "default",
-                                          .type            = AVMEDIA_TYPE_VIDEO,
-                                          .config_props    = config_output_props, },
-                                        { .name = NULL}},
+    .outputs   = avfilter_vf_settb_outputs,
 };

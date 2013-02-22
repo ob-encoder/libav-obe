@@ -203,7 +203,7 @@ static av_cold void uninit(AVFilterContext *ctx)
 static int query_formats(AVFilterContext *ctx)
 {
     MovieContext *movie = ctx->priv;
-    enum PixelFormat pix_fmts[] = { movie->codec_ctx->pix_fmt, PIX_FMT_NONE };
+    enum AVPixelFormat pix_fmts[] = { movie->codec_ctx->pix_fmt, AV_PIX_FMT_NONE };
 
     ff_set_common_formats(ctx, ff_make_format_list(pix_fmts));
     return 0;
@@ -255,7 +255,7 @@ static int movie_get_frame(AVFilterLink *outlink)
                 if (!movie->frame->sample_aspect_ratio.num)
                     movie->picref->video->pixel_aspect = st->sample_aspect_ratio;
                 av_dlog(outlink->src,
-                        "movie_get_frame(): file:'%s' pts:%"PRId64" time:%lf pos:%"PRId64" aspect:%d/%d\n",
+                        "movie_get_frame(): file:'%s' pts:%"PRId64" time:%f pos:%"PRId64" aspect:%d/%d\n",
                         movie->file_name, movie->picref->pts,
                         (double)movie->picref->pts * av_q2d(st->time_base),
                         movie->picref->pos,
@@ -279,7 +279,6 @@ static int movie_get_frame(AVFilterLink *outlink)
 
 static int request_frame(AVFilterLink *outlink)
 {
-    AVFilterBufferRef *outpicref;
     MovieContext *movie = outlink->src->priv;
     int ret;
 
@@ -288,26 +287,21 @@ static int request_frame(AVFilterLink *outlink)
     if ((ret = movie_get_frame(outlink)) < 0)
         return ret;
 
-    outpicref = avfilter_ref_buffer(movie->picref, ~0);
-    if (!outpicref) {
-        ret = AVERROR(ENOMEM);
-        goto fail;
-    }
-
-    ret = ff_start_frame(outlink, outpicref);
-    if (ret < 0)
-        goto fail;
-
-    ret = ff_draw_slice(outlink, 0, outlink->h, 1);
-    if (ret < 0)
-        goto fail;
-
-    ret = ff_end_frame(outlink);
-fail:
-    avfilter_unref_bufferp(&movie->picref);
+    ret = ff_filter_frame(outlink, movie->picref);
+    movie->picref = NULL;
 
     return ret;
 }
+
+static const AVFilterPad avfilter_vsrc_movie_outputs[] = {
+    {
+        .name          = "default",
+        .type          = AVMEDIA_TYPE_VIDEO,
+        .request_frame = request_frame,
+        .config_props  = config_output_props,
+    },
+    { NULL }
+};
 
 AVFilter avfilter_vsrc_movie = {
     .name          = "movie",
@@ -318,9 +312,5 @@ AVFilter avfilter_vsrc_movie = {
     .query_formats = query_formats,
 
     .inputs    = NULL,
-    .outputs   = (const AVFilterPad[]) {{ .name            = "default",
-                                          .type            = AVMEDIA_TYPE_VIDEO,
-                                          .request_frame   = request_frame,
-                                          .config_props    = config_output_props, },
-                                        { .name = NULL}},
+    .outputs   = avfilter_vsrc_movie_outputs,
 };

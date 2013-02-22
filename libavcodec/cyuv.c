@@ -34,6 +34,7 @@
 
 #include "avcodec.h"
 #include "dsputil.h"
+#include "internal.h"
 #include "libavutil/internal.h"
 
 
@@ -51,15 +52,15 @@ static av_cold int cyuv_decode_init(AVCodecContext *avctx)
     s->width = avctx->width;
     /* width needs to be divisible by 4 for this codec to work */
     if (s->width & 0x3)
-        return -1;
+        return AVERROR_INVALIDDATA;
     s->height = avctx->height;
-    avctx->pix_fmt = PIX_FMT_YUV411P;
+    avctx->pix_fmt = AV_PIX_FMT_YUV411P;
 
     return 0;
 }
 
 static int cyuv_decode_frame(AVCodecContext *avctx,
-                             void *data, int *data_size,
+                             void *data, int *got_frame,
                              AVPacket *avpkt)
 {
     const uint8_t *buf = avpkt->data;
@@ -82,6 +83,7 @@ static int cyuv_decode_frame(AVCodecContext *avctx,
     int stream_ptr;
     unsigned char cur_byte;
     int pixel_groups;
+    int ret;
 
     if (avctx->codec_id == AV_CODEC_ID_AURA) {
         y_table = u_table;
@@ -94,7 +96,7 @@ static int cyuv_decode_frame(AVCodecContext *avctx,
     if (buf_size != 48 + s->height * (s->width * 3 / 4)) {
         av_log(avctx, AV_LOG_ERROR, "got a buffer with %d bytes when %d were expected\n",
                buf_size, 48 + s->height * (s->width * 3 / 4));
-        return -1;
+        return AVERROR_INVALIDDATA;
     }
 
     /* pixel data starts 48 bytes in, after 3x16-byte tables */
@@ -105,9 +107,9 @@ static int cyuv_decode_frame(AVCodecContext *avctx,
 
     s->frame.buffer_hints = FF_BUFFER_HINTS_VALID;
     s->frame.reference = 0;
-    if (avctx->get_buffer(avctx, &s->frame) < 0) {
+    if ((ret = ff_get_buffer(avctx, &s->frame)) < 0) {
         av_log(avctx, AV_LOG_ERROR, "get_buffer() failed\n");
-        return -1;
+        return ret;
     }
 
     y_plane = s->frame.data[0];
@@ -162,7 +164,7 @@ static int cyuv_decode_frame(AVCodecContext *avctx,
         }
     }
 
-    *data_size=sizeof(AVFrame);
+    *got_frame = 1;
     *(AVFrame*)data= s->frame;
 
     return buf_size;

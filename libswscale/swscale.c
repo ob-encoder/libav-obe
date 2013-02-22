@@ -61,14 +61,37 @@ static av_always_inline void fillPlane(uint8_t *plane, int stride, int width,
     }
 }
 
+static void fill_plane9or10(uint8_t *plane, int stride, int width,
+                            int height, int y, uint8_t val,
+                            const int dst_depth, const int big_endian)
+{
+    int i, j;
+    uint16_t *dst = (uint16_t *) (plane + stride * y);
+#define FILL8TO9_OR_10(wfunc) \
+    for (i = 0; i < height; i++) { \
+        for (j = 0; j < width; j++) { \
+            wfunc(&dst[j], (val << (dst_depth - 8)) |  \
+                               (val >> (16 - dst_depth))); \
+        } \
+        dst += stride / 2; \
+    }
+    if (big_endian) {
+        FILL8TO9_OR_10(AV_WB16);
+    } else {
+        FILL8TO9_OR_10(AV_WL16);
+    }
+}
+
+
 static void hScale16To19_c(SwsContext *c, int16_t *_dst, int dstW,
                            const uint8_t *_src, const int16_t *filter,
                            const int32_t *filterPos, int filterSize)
 {
+    const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(c->srcFormat);
     int i;
     int32_t *dst        = (int32_t *) _dst;
     const uint16_t *src = (const uint16_t *) _src;
-    int bits            = av_pix_fmt_descriptors[c->srcFormat].comp[0].depth_minus1;
+    int bits            = desc->comp[0].depth_minus1;
     int sh              = bits - 4;
 
     for (i = 0; i < dstW; i++) {
@@ -88,9 +111,10 @@ static void hScale16To15_c(SwsContext *c, int16_t *dst, int dstW,
                            const uint8_t *_src, const int16_t *filter,
                            const int32_t *filterPos, int filterSize)
 {
+    const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(c->srcFormat);
     int i;
     const uint16_t *src = (const uint16_t *) _src;
-    int sh              = av_pix_fmt_descriptors[c->srcFormat].comp[0].depth_minus1;
+    int sh              = desc->comp[0].depth_minus1;
 
     for (i = 0; i < dstW; i++) {
         int j;
@@ -139,7 +163,7 @@ static void hScale8To19_c(SwsContext *c, int16_t *_dst, int dstW,
     }
 }
 
-// FIXME all pal and rgb srcFormats could do this convertion as well
+// FIXME all pal and rgb srcFormats could do this conversion as well
 // FIXME all scalers more complex than bilinear could do half of this transform
 static void chrRangeToJpeg_c(int16_t *dstU, int16_t *dstV, int width)
 {
@@ -326,7 +350,7 @@ static int swScale(SwsContext *c, const uint8_t *src[],
     const int chrSrcW                = c->chrSrcW;
     const int lumXInc                = c->lumXInc;
     const int chrXInc                = c->chrXInc;
-    const enum PixelFormat dstFormat = c->dstFormat;
+    const enum AVPixelFormat dstFormat = c->dstFormat;
     const int flags                  = c->flags;
     int32_t *vLumFilterPos           = c->vLumFilterPos;
     int32_t *vChrFilterPos           = c->vChrFilterPos;
@@ -356,6 +380,7 @@ static int swScale(SwsContext *c, const uint8_t *src[],
     yuv2packed1_fn yuv2packed1       = c->yuv2packed1;
     yuv2packed2_fn yuv2packed2       = c->yuv2packed2;
     yuv2packedX_fn yuv2packedX       = c->yuv2packedX;
+    yuv2anyX_fn yuv2anyX             = c->yuv2anyX;
     const int chrSrcSliceY           =     srcSliceY  >> c->chrSrcVSubSample;
     const int chrSrcSliceH           = -((-srcSliceH) >> c->chrSrcVSubSample);
     int should_dither                = is9_OR_10BPS(c->srcFormat) ||
@@ -539,7 +564,7 @@ static int swScale(SwsContext *c, const uint8_t *src[],
             /* hmm looks like we can't use MMX here without overwriting
              * this array's tail */
             ff_sws_init_output_funcs(c, &yuv2plane1, &yuv2planeX, &yuv2nv12cX,
-                                     &yuv2packed1, &yuv2packed2, &yuv2packedX);
+                                     &yuv2packed1, &yuv2packed2, &yuv2packedX, &yuv2anyX);
         }
 
         {
@@ -637,7 +662,7 @@ static int swScale(SwsContext *c, const uint8_t *src[],
                                    dstW, c->lumDither8, 0);
                     }
                 }
-            } else {
+            } else if (yuv2packedX) {
                 if (c->yuv2packed1 && vLumFilterSize == 1 &&
                     vChrFilterSize <= 2) { // unscaled RGB
                     int chrAlpha = vChrFilterSize == 1 ? 0 : vChrFilter[2 * dstY + 1];
@@ -662,12 +687,30 @@ static int swScale(SwsContext *c, const uint8_t *src[],
                                 chrUSrcPtr, chrVSrcPtr, vChrFilterSize,
                                 alpSrcPtr, dest[0], dstW, dstY);
                 }
+            } else {
+                yuv2anyX(c, vLumFilter + dstY * vLumFilterSize,
+                         lumSrcPtr, vLumFilterSize,
+                         vChrFilter + dstY * vChrFilterSize,
+                         chrUSrcPtr, chrVSrcPtr, vChrFilterSize,
+                         alpSrcPtr, dest, dstW, dstY);
             }
         }
     }
 
-    if (isPlanar(dstFormat) && isALPHA(dstFormat) && !alpPixBuf)
-        fillPlane(dst[3], dstStride[3], dstW, dstY - lastDstY, lastDstY, 255);
+    if (isPlanar(dstFormat) && isALPHA(dstFormat) && !alpPixBuf) {
+        int length = dstW;
+        int height = dstY - lastDstY;
+        if (is16BPS(c->dstFormat))
+            length *= 2;
+
+        if (is9_OR_10BPS(dstFormat)) {
+            const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(dstFormat);
+            fill_plane9or10(dst[3], dstStride[3], length, height, lastDstY,
+                            255, desc->comp[3].depth_minus1 + 1,
+                            isBE(dstFormat));
+        } else
+            fillPlane(dst[3], dstStride[3], length, height, lastDstY, 255);
+    }
 
 #if HAVE_MMXEXT_INLINE
     if (av_get_cpu_flags() & AV_CPU_FLAG_MMXEXT)
@@ -687,11 +730,11 @@ static int swScale(SwsContext *c, const uint8_t *src[],
 
 static av_cold void sws_init_swScale_c(SwsContext *c)
 {
-    enum PixelFormat srcFormat = c->srcFormat;
+    enum AVPixelFormat srcFormat = c->srcFormat;
 
     ff_sws_init_output_funcs(c, &c->yuv2plane1, &c->yuv2planeX,
                              &c->yuv2nv12cX, &c->yuv2packed1,
-                             &c->yuv2packed2, &c->yuv2packedX);
+                             &c->yuv2packed2, &c->yuv2packedX, &c->yuv2anyX);
 
     ff_sws_init_input_funcs(c);
 
@@ -731,7 +774,7 @@ static av_cold void sws_init_swScale_c(SwsContext *c)
     }
 
     if (!(isGray(srcFormat) || isGray(c->dstFormat) ||
-          srcFormat == PIX_FMT_MONOBLACK || srcFormat == PIX_FMT_MONOWHITE))
+          srcFormat == AV_PIX_FMT_MONOBLACK || srcFormat == AV_PIX_FMT_MONOWHITE))
         c->needs_hcscale = 1;
 }
 

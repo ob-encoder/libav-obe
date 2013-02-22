@@ -56,13 +56,16 @@ typedef struct QtrleContext {
 static void qtrle_decode_1bpp(QtrleContext *s, int row_ptr, int lines_to_change)
 {
     int rle_code;
-    int pixel_ptr = 0;
+    int pixel_ptr;
     int row_inc = s->frame.linesize[0];
     unsigned char pi0, pi1;  /* 2 8-pixel values */
     unsigned char *rgb = s->frame.data[0];
     int pixel_limit = s->frame.linesize[0] * s->avctx->height;
     int skip;
 
+    row_ptr  -= row_inc;
+    pixel_ptr = row_ptr;
+    lines_to_change++;
     while (lines_to_change) {
         skip     =              bytestream2_get_byte(&s->g);
         rle_code = (signed char)bytestream2_get_byte(&s->g);
@@ -346,7 +349,7 @@ static av_cold int qtrle_decode_init(AVCodecContext *avctx)
     switch (avctx->bits_per_coded_sample) {
     case 1:
     case 33:
-        avctx->pix_fmt = PIX_FMT_MONOWHITE;
+        avctx->pix_fmt = AV_PIX_FMT_MONOWHITE;
         break;
 
     case 2:
@@ -355,19 +358,19 @@ static av_cold int qtrle_decode_init(AVCodecContext *avctx)
     case 34:
     case 36:
     case 40:
-        avctx->pix_fmt = PIX_FMT_PAL8;
+        avctx->pix_fmt = AV_PIX_FMT_PAL8;
         break;
 
     case 16:
-        avctx->pix_fmt = PIX_FMT_RGB555;
+        avctx->pix_fmt = AV_PIX_FMT_RGB555;
         break;
 
     case 24:
-        avctx->pix_fmt = PIX_FMT_RGB24;
+        avctx->pix_fmt = AV_PIX_FMT_RGB24;
         break;
 
     case 32:
-        avctx->pix_fmt = PIX_FMT_RGB32;
+        avctx->pix_fmt = AV_PIX_FMT_RGB32;
         break;
 
     default:
@@ -382,21 +385,22 @@ static av_cold int qtrle_decode_init(AVCodecContext *avctx)
 }
 
 static int qtrle_decode_frame(AVCodecContext *avctx,
-                              void *data, int *data_size,
+                              void *data, int *got_frame,
                               AVPacket *avpkt)
 {
     QtrleContext *s = avctx->priv_data;
     int header, start_line;
     int height, row_ptr;
     int has_palette = 0;
+    int ret;
 
     bytestream2_init(&s->g, avpkt->data, avpkt->size);
     s->frame.reference = 1;
     s->frame.buffer_hints = FF_BUFFER_HINTS_VALID | FF_BUFFER_HINTS_PRESERVE |
                             FF_BUFFER_HINTS_REUSABLE | FF_BUFFER_HINTS_READABLE;
-    if (avctx->reget_buffer(avctx, &s->frame)) {
+    if ((ret = avctx->reget_buffer(avctx, &s->frame)) < 0) {
         av_log (s->avctx, AV_LOG_ERROR, "reget_buffer() failed\n");
-        return -1;
+        return ret;
     }
 
     /* check if this frame is even supposed to change */
@@ -478,7 +482,7 @@ static int qtrle_decode_frame(AVCodecContext *avctx,
     }
 
 done:
-    *data_size = sizeof(AVFrame);
+    *got_frame      = 1;
     *(AVFrame*)data = s->frame;
 
     /* always report that the buffer was completely consumed */

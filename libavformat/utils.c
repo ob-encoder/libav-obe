@@ -725,7 +725,10 @@ void ff_compute_frame_duration(int *pnum, int *pden, AVStream *st,
             *pnum = st->codec->time_base.num;
             *pden = st->codec->time_base.den;
             if (pc && pc->repeat_pict) {
-                *pnum = (*pnum) * (1 + pc->repeat_pict);
+                if (*pnum > INT_MAX / (1 + pc->repeat_pict))
+                    *pden /= 1 + pc->repeat_pict;
+                else
+                    *pnum *= 1 + pc->repeat_pict;
             }
             //If this codec can be interlaced or progressive then we need a parser to compute duration of a packet
             //Thus if we have no parser in such case leave duration undefined.
@@ -1759,7 +1762,7 @@ int avformat_seek_file(AVFormatContext *s, int stream_index, int64_t min_ts, int
     //Fallback to old API if new is not implemented but old is
     //Note the old has somewat different sematics
     if(s->iformat->read_seek || 1)
-        return av_seek_frame(s, stream_index, ts, flags | (ts - min_ts > (uint64_t)(max_ts - ts) ? AVSEEK_FLAG_BACKWARD : 0));
+        return av_seek_frame(s, stream_index, ts, flags | ((uint64_t)ts - min_ts > (uint64_t)max_ts - ts ? AVSEEK_FLAG_BACKWARD : 0));
 
     // try some generic seek like seek_frame_generic() but with new ts semantics
 }
@@ -2018,7 +2021,7 @@ static int has_codec_parameters(AVStream *st)
         break;
     case AVMEDIA_TYPE_VIDEO:
         val = avctx->width;
-        if (st->info->found_decoder >= 0 && avctx->pix_fmt == PIX_FMT_NONE)
+        if (st->info->found_decoder >= 0 && avctx->pix_fmt == AV_PIX_FMT_NONE)
             return 0;
         break;
     default:
@@ -2130,6 +2133,36 @@ enum AVCodecID ff_codec_get_id(const AVCodecTag *tags, unsigned int tag)
             return tags[i].id;
     }
     return AV_CODEC_ID_NONE;
+}
+
+enum AVCodecID ff_get_pcm_codec_id(int bps, int flt, int be, int sflags)
+{
+    if (flt) {
+        switch (bps) {
+        case 32: return be ? AV_CODEC_ID_PCM_F32BE : AV_CODEC_ID_PCM_F32LE;
+        case 64: return be ? AV_CODEC_ID_PCM_F64BE : AV_CODEC_ID_PCM_F64LE;
+        default: return AV_CODEC_ID_NONE;
+        }
+    } else {
+        bps >>= 3;
+        if (sflags & (1 << (bps - 1))) {
+            switch (bps) {
+            case 1:  return AV_CODEC_ID_PCM_S8;
+            case 2:  return be ? AV_CODEC_ID_PCM_S16BE : AV_CODEC_ID_PCM_S16LE;
+            case 3:  return be ? AV_CODEC_ID_PCM_S24BE : AV_CODEC_ID_PCM_S24LE;
+            case 4:  return be ? AV_CODEC_ID_PCM_S32BE : AV_CODEC_ID_PCM_S32LE;
+            default: return AV_CODEC_ID_NONE;
+            }
+        } else {
+            switch (bps) {
+            case 1:  return AV_CODEC_ID_PCM_U8;
+            case 2:  return be ? AV_CODEC_ID_PCM_U16BE : AV_CODEC_ID_PCM_U16LE;
+            case 3:  return be ? AV_CODEC_ID_PCM_U24BE : AV_CODEC_ID_PCM_U24LE;
+            case 4:  return be ? AV_CODEC_ID_PCM_U32BE : AV_CODEC_ID_PCM_U32LE;
+            default: return AV_CODEC_ID_NONE;
+            }
+        }
+    }
 }
 
 unsigned int av_codec_get_tag(const AVCodecTag * const *tags, enum AVCodecID id)
@@ -3059,7 +3092,6 @@ static void hex_dump_internal(void *avcl, FILE *f, int level,
                               const uint8_t *buf, int size)
 {
     int len, i, j, c;
-#undef fprintf
 #define PRINT(...) do { if (!f) av_log(avcl, level, __VA_ARGS__); else fprintf(f, __VA_ARGS__); } while(0)
 
     for(i=0;i<size;i+=16) {
@@ -3097,7 +3129,6 @@ void av_hex_dump_log(void *avcl, int level, const uint8_t *buf, int size)
 
 static void pkt_dump_internal(void *avcl, FILE *f, int level, AVPacket *pkt, int dump_payload, AVRational time_base)
 {
-#undef fprintf
 #define PRINT(...) do { if (!f) av_log(avcl, level, __VA_ARGS__); else fprintf(f, __VA_ARGS__); } while(0)
     PRINT("stream #%d:\n", pkt->stream_index);
     PRINT("  keyframe=%d\n", ((pkt->flags & AV_PKT_FLAG_KEY) != 0));
@@ -3389,17 +3420,23 @@ int ff_find_stream_index(AVFormatContext *s, int id)
 void ff_make_absolute_url(char *buf, int size, const char *base,
                           const char *rel)
 {
-    char *sep;
+    char *sep, *path_query;
     /* Absolute path, relative to the current server */
     if (base && strstr(base, "://") && rel[0] == '/') {
         if (base != buf)
             av_strlcpy(buf, base, size);
         sep = strstr(buf, "://");
         if (sep) {
-            sep += 3;
-            sep = strchr(sep, '/');
-            if (sep)
-                *sep = '\0';
+            /* Take scheme from base url */
+            if (rel[1] == '/') {
+                sep[1] = '\0';
+            } else {
+                /* Take scheme and host from base url */
+                sep += 3;
+                sep = strchr(sep, '/');
+                if (sep)
+                    *sep = '\0';
+            }
         }
         av_strlcat(buf, rel, size);
         return;
@@ -3411,6 +3448,18 @@ void ff_make_absolute_url(char *buf, int size, const char *base,
     }
     if (base != buf)
         av_strlcpy(buf, base, size);
+
+    /* Strip off any query string from base */
+    path_query = strchr(buf, '?');
+    if (path_query != NULL)
+        *path_query = '\0';
+
+    /* Is relative path just a new query part? */
+    if (rel[0] == '?') {
+        av_strlcat(buf, rel, size);
+        return;
+    }
+
     /* Remove the file name from the base url */
     sep = strrchr(buf, '/');
     if (sep)

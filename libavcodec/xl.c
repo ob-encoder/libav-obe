@@ -27,6 +27,7 @@
 #include "libavutil/common.h"
 #include "libavutil/intreadwrite.h"
 #include "avcodec.h"
+#include "internal.h"
 
 typedef struct VideoXLContext{
     AVCodecContext *avctx;
@@ -40,7 +41,7 @@ static const int xl_table[32] = {
  120, 121, 122, 123, 124, 125, 126, 127};
 
 static int decode_frame(AVCodecContext *avctx,
-                        void *data, int *data_size,
+                        void *data, int *got_frame,
                         AVPacket *avpkt)
 {
     const uint8_t *buf = avpkt->data;
@@ -48,7 +49,7 @@ static int decode_frame(AVCodecContext *avctx,
     VideoXLContext * const a = avctx->priv_data;
     AVFrame * const p = &a->pic;
     uint8_t *Y, *U, *V;
-    int i, j;
+    int i, j, ret;
     int stride;
     uint32_t val;
     int y0, y1, y2, y3 = 0, c0 = 0, c1 = 0;
@@ -57,9 +58,9 @@ static int decode_frame(AVCodecContext *avctx,
         avctx->release_buffer(avctx, p);
 
     p->reference = 0;
-    if(avctx->get_buffer(avctx, p) < 0){
+    if ((ret = ff_get_buffer(avctx, p)) < 0){
         av_log(avctx, AV_LOG_ERROR, "get_buffer() failed\n");
-        return -1;
+        return ret;
     }
     p->pict_type= AV_PICTURE_TYPE_I;
     p->key_frame= 1;
@@ -121,7 +122,7 @@ static int decode_frame(AVCodecContext *avctx,
         V += a->pic.linesize[2];
     }
 
-    *data_size = sizeof(AVFrame);
+    *got_frame = 1;
     *(AVFrame*)data = a->pic;
 
     return buf_size;
@@ -130,7 +131,7 @@ static int decode_frame(AVCodecContext *avctx,
 static av_cold int decode_init(AVCodecContext *avctx){
 //    VideoXLContext * const a = avctx->priv_data;
 
-    avctx->pix_fmt= PIX_FMT_YUV411P;
+    avctx->pix_fmt= AV_PIX_FMT_YUV411P;
 
     return 0;
 }
