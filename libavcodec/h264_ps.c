@@ -204,7 +204,7 @@ static inline int decode_vui_parameters(H264Context *h, SPS *sps){
             return -1;
         }
 
-        sps->fixed_frame_rate_flag = h->avctx->h264_fixed_frame_rate = get_bits1(&s->gb);
+        sps->fixed_frame_rate_flag = h->avctx->h264_fixed_frame_rate = get_bits1(&h->gb);
     }
 
     sps->nal_hrd_parameters_present_flag = get_bits1(&h->gb);
