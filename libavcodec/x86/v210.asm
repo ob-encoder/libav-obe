@@ -20,7 +20,6 @@
 ;* Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 ;******************************************************************************
 
-%include "libavutil/x86/x86inc.asm"
 %include "libavutil/x86/x86util.asm"
 
 SECTION_RODATA
@@ -35,7 +34,7 @@ SECTION .text
 %macro v210_planar_unpack 2
 
 ; v210_planar_unpack(const uint32_t *src, uint16_t *y, uint16_t *u, uint16_t *v, int width)
-cglobal v210_planar_unpack_%1_%2, 5, 5
+cglobal v210_planar_unpack_%1_%2, 5, 5, 7
     movsxdifnidn r4, r4d
     lea    r1, [r1+2*r4]
     add    r2, r4
