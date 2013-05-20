@@ -29,6 +29,7 @@
 #include "vp56data.h"
 #include "dsputil.h"
 #include "get_bits.h"
+#include "hpeldsp.h"
 #include "bytestream.h"
 #include "h264chroma.h"
 #include "videodsp.h"
@@ -95,14 +96,13 @@ typedef struct VP56Model {
 
 struct vp56_context {
     AVCodecContext *avctx;
-    DSPContext dsp;
     H264ChromaContext h264chroma;
+    HpelDSPContext hdsp;
     VideoDSPContext vdsp;
     VP3DSPContext vp3dsp;
     VP56DSPContext vp56dsp;
-    ScanTable scantable;
-    AVFrame frames[4];
-    AVFrame *framep[6];
+    uint8_t idct_scantable[64];
+    AVFrame *frames[4];
     uint8_t *edge_emu_buffer_alloc;
     uint8_t *edge_emu_buffer;
     VP56RangeCoder c;
@@ -120,7 +120,6 @@ struct vp56_context {
     int quantizer;
     uint16_t dequant_dc;
     uint16_t dequant_ac;
-    int8_t *qscale_table;
 
     /* DC predictors management */
     VP56RefDc *above_blocks;
@@ -179,7 +178,7 @@ struct vp56_context {
 };
 
 
-void ff_vp56_init(AVCodecContext *avctx, int flip, int has_alpha);
+int ff_vp56_init(AVCodecContext *avctx, int flip, int has_alpha);
 int ff_vp56_free(AVCodecContext *avctx);
 void ff_vp56_init_dequant(VP56Context *s, int quantizer);
 int ff_vp56_decode_frame(AVCodecContext *avctx, void *data, int *got_frame,

@@ -19,11 +19,10 @@
  * License along with Libav; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
-#include "libavcodec/dsputil.h"
 #include "libavcodec/simple_idct.h"
 #include "libavutil/internal.h"
 #include "libavutil/mem.h"
-#include "dsputil_mmx.h"
+#include "dsputil_x86.h"
 
 #if HAVE_INLINE_ASM
 

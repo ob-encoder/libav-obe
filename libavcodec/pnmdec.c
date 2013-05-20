@@ -32,8 +32,7 @@ static int pnm_decode_frame(AVCodecContext *avctx, void *data,
     const uint8_t *buf   = avpkt->data;
     int buf_size         = avpkt->size;
     PNMContext * const s = avctx->priv_data;
-    AVFrame *picture     = data;
-    AVFrame * const p    = &s->picture;
+    AVFrame * const p    = data;
     int i, j, n, linesize, h, upgrade = 0;
     unsigned char *ptr;
     int components, sample_len, ret;
@@ -45,11 +44,7 @@ static int pnm_decode_frame(AVCodecContext *avctx, void *data,
     if ((ret = ff_pnm_decode_header(avctx, s)) < 0)
         return ret;
 
-    if (p->data[0])
-        avctx->release_buffer(avctx, p);
-
-    p->reference = 0;
-    if ((ret = ff_get_buffer(avctx, p)) < 0) {
+    if ((ret = ff_get_buffer(avctx, p, 0)) < 0) {
         av_log(avctx, AV_LOG_ERROR, "get_buffer() failed\n");
         return ret;
     }
@@ -135,12 +130,16 @@ static int pnm_decode_frame(AVCodecContext *avctx, void *data,
         }
         break;
     case AV_PIX_FMT_YUV420P:
+    case AV_PIX_FMT_YUV420P9BE:
+    case AV_PIX_FMT_YUV420P10BE:
         {
             unsigned char *ptr1, *ptr2;
 
             n        = avctx->width;
             ptr      = p->data[0];
             linesize = p->linesize[0];
+            if (s->maxval >= 256)
+                n *= 2;
             if (s->bytestream + n * avctx->height * 3 / 2 > s->bytestream_end)
                 return AVERROR_INVALIDDATA;
             for (i = 0; i < avctx->height; i++) {
@@ -159,6 +158,47 @@ static int pnm_decode_frame(AVCodecContext *avctx, void *data,
                 s->bytestream += n;
                 ptr1 += p->linesize[1];
                 ptr2 += p->linesize[2];
+            }
+        }
+        break;
+    case AV_PIX_FMT_YUV420P16:
+        {
+            uint16_t *ptr1, *ptr2;
+            const int f = (65535 * 32768 + s->maxval / 2) / s->maxval;
+            unsigned int j, v;
+
+            n        = avctx->width * 2;
+            ptr      = p->data[0];
+            linesize = p->linesize[0];
+            if (s->bytestream + n * avctx->height * 3 / 2 > s->bytestream_end)
+                return AVERROR_INVALIDDATA;
+            for (i = 0; i < avctx->height; i++) {
+                for (j = 0; j < n / 2; j++) {
+                    v = av_be2ne16(((uint16_t *)s->bytestream)[j]);
+                    ((uint16_t *)ptr)[j] = (v * f + 16384) >> 15;
+                }
+                s->bytestream += n;
+                ptr           += linesize;
+            }
+            ptr1 = (uint16_t*)p->data[1];
+            ptr2 = (uint16_t*)p->data[2];
+            n >>= 1;
+            h = avctx->height >> 1;
+            for (i = 0; i < h; i++) {
+                for (j = 0; j < n / 2; j++) {
+                    v = av_be2ne16(((uint16_t *)s->bytestream)[j]);
+                    ptr1[j] = (v * f + 16384) >> 15;
+                }
+                s->bytestream += n;
+
+                for (j = 0; j < n / 2; j++) {
+                    v = av_be2ne16(((uint16_t *)s->bytestream)[j]);
+                    ptr2[j] = (v * f + 16384) >> 15;
+                }
+                s->bytestream += n;
+
+                ptr1 += p->linesize[1] / 2;
+                ptr2 += p->linesize[2] / 2;
             }
         }
         break;
@@ -181,7 +221,6 @@ static int pnm_decode_frame(AVCodecContext *avctx, void *data,
         }
         break;
     }
-    *picture   = s->picture;
     *got_frame = 1;
 
     return s->bytestream - s->bytestream_start;
@@ -194,8 +233,6 @@ AVCodec ff_pgm_decoder = {
     .type           = AVMEDIA_TYPE_VIDEO,
     .id             = AV_CODEC_ID_PGM,
     .priv_data_size = sizeof(PNMContext),
-    .init           = ff_pnm_init,
-    .close          = ff_pnm_end,
     .decode         = pnm_decode_frame,
     .capabilities   = CODEC_CAP_DR1,
     .long_name      = NULL_IF_CONFIG_SMALL("PGM (Portable GrayMap) image"),
@@ -208,8 +245,6 @@ AVCodec ff_pgmyuv_decoder = {
     .type           = AVMEDIA_TYPE_VIDEO,
     .id             = AV_CODEC_ID_PGMYUV,
     .priv_data_size = sizeof(PNMContext),
-    .init           = ff_pnm_init,
-    .close          = ff_pnm_end,
     .decode         = pnm_decode_frame,
     .capabilities   = CODEC_CAP_DR1,
     .long_name      = NULL_IF_CONFIG_SMALL("PGMYUV (Portable GrayMap YUV) image"),
@@ -222,8 +257,6 @@ AVCodec ff_ppm_decoder = {
     .type           = AVMEDIA_TYPE_VIDEO,
     .id             = AV_CODEC_ID_PPM,
     .priv_data_size = sizeof(PNMContext),
-    .init           = ff_pnm_init,
-    .close          = ff_pnm_end,
     .decode         = pnm_decode_frame,
     .capabilities   = CODEC_CAP_DR1,
     .long_name      = NULL_IF_CONFIG_SMALL("PPM (Portable PixelMap) image"),
@@ -236,8 +269,6 @@ AVCodec ff_pbm_decoder = {
     .type           = AVMEDIA_TYPE_VIDEO,
     .id             = AV_CODEC_ID_PBM,
     .priv_data_size = sizeof(PNMContext),
-    .init           = ff_pnm_init,
-    .close          = ff_pnm_end,
     .decode         = pnm_decode_frame,
     .capabilities   = CODEC_CAP_DR1,
     .long_name      = NULL_IF_CONFIG_SMALL("PBM (Portable BitMap) image"),
@@ -250,8 +281,6 @@ AVCodec ff_pam_decoder = {
     .type           = AVMEDIA_TYPE_VIDEO,
     .id             = AV_CODEC_ID_PAM,
     .priv_data_size = sizeof(PNMContext),
-    .init           = ff_pnm_init,
-    .close          = ff_pnm_end,
     .decode         = pnm_decode_frame,
     .capabilities   = CODEC_CAP_DR1,
     .long_name      = NULL_IF_CONFIG_SMALL("PAM (Portable AnyMap) image"),

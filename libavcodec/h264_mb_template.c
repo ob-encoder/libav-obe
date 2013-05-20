@@ -43,7 +43,7 @@ static av_noinline void FUNC(hl_decode_mb)(H264Context *h)
     const int mb_x    = h->mb_x;
     const int mb_y    = h->mb_y;
     const int mb_xy   = h->mb_xy;
-    const int mb_type = h->cur_pic.f.mb_type[mb_xy];
+    const int mb_type = h->cur_pic.mb_type[mb_xy];
     uint8_t *dest_y, *dest_cb, *dest_cr;
     int linesize, uvlinesize /*dct_offset*/;
     int i, j;
@@ -53,7 +53,7 @@ static av_noinline void FUNC(hl_decode_mb)(H264Context *h)
     const int is_h264 = !CONFIG_SVQ3_DECODER || SIMPLE || h->avctx->codec_id == AV_CODEC_ID_H264;
     void (*idct_add)(uint8_t *dst, int16_t *block, int stride);
     const int block_h   = 16 >> h->chroma_y_shift;
-    const int chroma422 = CHROMA422;
+    const int chroma422 = CHROMA422(h);
 
     dest_y  = h->cur_pic.f.data[0] + ((mb_x << PIXEL_SHIFT)     + mb_y * h->linesize)  * 16;
     dest_cb = h->cur_pic.f.data[1] +  (mb_x << PIXEL_SHIFT) * 8 + mb_y * h->uvlinesize * block_h;
@@ -64,7 +64,7 @@ static av_noinline void FUNC(hl_decode_mb)(H264Context *h)
 
     h->list_counts[mb_xy] = h->list_count;
 
-    if (!SIMPLE && MB_FIELD) {
+    if (!SIMPLE && MB_FIELD(h)) {
         linesize     = h->mb_linesize = h->linesize * 2;
         uvlinesize   = h->mb_uvlinesize = h->uvlinesize * 2;
         block_offset = &h->block_offset[48];
@@ -73,7 +73,7 @@ static av_noinline void FUNC(hl_decode_mb)(H264Context *h)
             dest_cb -= h->uvlinesize * (block_h - 1);
             dest_cr -= h->uvlinesize * (block_h - 1);
         }
-        if (FRAME_MBAFF) {
+        if (FRAME_MBAFF(h)) {
             int list;
             for (list = 0; list < h->list_count; list++) {
                 if (!USES_LIST(mb_type, list))
@@ -102,7 +102,7 @@ static av_noinline void FUNC(hl_decode_mb)(H264Context *h)
             const int bit_depth = h->sps.bit_depth_luma;
             int j;
             GetBitContext gb;
-            init_get_bits(&gb, (uint8_t *)h->mb,
+            init_get_bits(&gb, h->intra_pcm_ptr,
                           ff_h264_mb_sizes[h->sps.chroma_format_idc] * bit_depth);
 
             for (i = 0; i < 16; i++) {
@@ -137,7 +137,7 @@ static av_noinline void FUNC(hl_decode_mb)(H264Context *h)
             }
         } else {
             for (i = 0; i < 16; i++)
-                memcpy(dest_y + i * linesize, (uint8_t *)h->mb + i * 16, 16);
+                memcpy(dest_y + i * linesize, h->intra_pcm_ptr + i * 16, 16);
             if (SIMPLE || !CONFIG_GRAY || !(h->flags & CODEC_FLAG_GRAY)) {
                 if (!h->sps.chroma_format_idc) {
                     for (i = 0; i < block_h; i++) {
@@ -145,8 +145,8 @@ static av_noinline void FUNC(hl_decode_mb)(H264Context *h)
                         memset(dest_cr + i * uvlinesize, 128, 8);
                     }
                 } else {
-                    uint8_t *src_cb = (uint8_t *)h->mb + 256;
-                    uint8_t *src_cr = (uint8_t *)h->mb + 256 + block_h * 8;
+                    const uint8_t *src_cb = h->intra_pcm_ptr + 256;
+                    const uint8_t *src_cr = h->intra_pcm_ptr + 256 + block_h * 8;
                     for (i = 0; i < block_h; i++) {
                         memcpy(dest_cb + i * uvlinesize, src_cb + i * 8, 8);
                         memcpy(dest_cr + i * uvlinesize, src_cr + i * 8, 8);
@@ -207,7 +207,7 @@ static av_noinline void FUNC(hl_decode_mb)(H264Context *h)
                                                             h->mb + (16 * 16 * 2 << PIXEL_SHIFT),
                                                             uvlinesize);
                 } else {
-                    idct_add = h->dsp.add_pixels4;
+                    idct_add = h->h264dsp.h264_add_pixels4_clear;
                     for (j = 1; j < 3; j++) {
                         for (i = j * 16; i < j * 16 + 4; i++)
                             if (h->non_zero_count_cache[scan8[i]] ||
@@ -262,10 +262,6 @@ static av_noinline void FUNC(hl_decode_mb)(H264Context *h)
             }
         }
     }
-    if (h->cbp || IS_INTRA(mb_type)) {
-        h->dsp.clear_blocks(h->mb);
-        h->dsp.clear_blocks(h->mb + (24 * 16 << PIXEL_SHIFT));
-    }
 }
 
 #if !SIMPLE || BITS == 8
@@ -279,7 +275,7 @@ static av_noinline void FUNC(hl_decode_mb_444)(H264Context *h)
     const int mb_x    = h->mb_x;
     const int mb_y    = h->mb_y;
     const int mb_xy   = h->mb_xy;
-    const int mb_type = h->cur_pic.f.mb_type[mb_xy];
+    const int mb_type = h->cur_pic.mb_type[mb_xy];
     uint8_t *dest[3];
     int linesize;
     int i, j, p;
@@ -296,13 +292,13 @@ static av_noinline void FUNC(hl_decode_mb_444)(H264Context *h)
 
     h->list_counts[mb_xy] = h->list_count;
 
-    if (!SIMPLE && MB_FIELD) {
+    if (!SIMPLE && MB_FIELD(h)) {
         linesize     = h->mb_linesize = h->mb_uvlinesize = h->linesize * 2;
         block_offset = &h->block_offset[48];
         if (mb_y & 1) // FIXME move out of this function?
             for (p = 0; p < 3; p++)
                 dest[p] -= h->linesize * 15;
-        if (FRAME_MBAFF) {
+        if (FRAME_MBAFF(h)) {
             int list;
             for (list = 0; list < h->list_count; list++) {
                 if (!USES_LIST(mb_type, list))
@@ -328,7 +324,7 @@ static av_noinline void FUNC(hl_decode_mb_444)(H264Context *h)
         if (PIXEL_SHIFT) {
             const int bit_depth = h->sps.bit_depth_luma;
             GetBitContext gb;
-            init_get_bits(&gb, (uint8_t *)h->mb, 768 * bit_depth);
+            init_get_bits(&gb, h->intra_pcm_ptr, 768 * bit_depth);
 
             for (p = 0; p < plane_count; p++)
                 for (i = 0; i < 16; i++) {
@@ -340,7 +336,7 @@ static av_noinline void FUNC(hl_decode_mb_444)(H264Context *h)
             for (p = 0; p < plane_count; p++)
                 for (i = 0; i < 16; i++)
                     memcpy(dest[p] + i * linesize,
-                           (uint8_t *)h->mb + p * 256 + i * 16, 16);
+                           h->intra_pcm_ptr + p * 256 + i * 16, 16);
         }
     } else {
         if (IS_INTRA(mb_type)) {
@@ -368,10 +364,6 @@ static av_noinline void FUNC(hl_decode_mb_444)(H264Context *h)
             hl_decode_mb_idct_luma(h, mb_type, 1, SIMPLE, transform_bypass,
                                    PIXEL_SHIFT, block_offset, linesize,
                                    dest[p], p);
-    }
-    if (h->cbp || IS_INTRA(mb_type)) {
-        h->dsp.clear_blocks(h->mb);
-        h->dsp.clear_blocks(h->mb + (24 * 16 << PIXEL_SHIFT));
     }
 }
 

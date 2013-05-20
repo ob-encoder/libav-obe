@@ -19,8 +19,6 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-/* #define DEBUG */
-
 #include "avformat.h"
 #include "avio_internal.h"
 #include "internal.h"
@@ -214,38 +212,68 @@ AVInputFormat *av_find_input_format(const char *short_name)
     return NULL;
 }
 
+/* an arbitrarily chosen "sane" max packet size -- 50M */
+#define SANE_CHUNK_SIZE (50000000)
+
+/*
+ * Read the data in sane-sized chunks and append to pkt.
+ * Return the number of bytes read or an error.
+ */
+static int append_packet_chunked(AVIOContext *s, AVPacket *pkt, int size)
+{
+    int64_t chunk_size = size;
+    int orig_pos       = pkt->pos; // av_grow_packet might reset pos
+    int orig_size      = pkt->size;
+    int ret = 0;
+
+    do {
+        int prev_size = pkt->size;
+        int read_size;
+
+        /*
+         * When the caller requests a lot of data, limit it to the amount left
+         * in file or SANE_CHUNK_SIZE when it is not known
+         */
+        if (size > SANE_CHUNK_SIZE) {
+            int64_t filesize = avio_size(s) - avio_tell(s);
+            chunk_size = FFMAX(filesize, SANE_CHUNK_SIZE);
+        }
+        read_size = FFMIN(size, chunk_size);
+
+        ret = av_grow_packet(pkt, read_size);
+        if (ret < 0)
+            break;
+
+        ret = avio_read(s, pkt->data + prev_size, read_size);
+        if (ret != read_size) {
+            av_shrink_packet(pkt, prev_size + FFMAX(ret, 0));
+            break;
+        }
+
+        size -= read_size;
+    } while (size > 0);
+
+    pkt->pos = orig_pos;
+    if (!pkt->size)
+        av_free_packet(pkt);
+    return pkt->size > orig_size ? pkt->size - orig_size : ret;
+}
 
 int av_get_packet(AVIOContext *s, AVPacket *pkt, int size)
 {
-    int ret= av_new_packet(pkt, size);
+    av_init_packet(pkt);
+    pkt->data = NULL;
+    pkt->size = 0;
+    pkt->pos  = avio_tell(s);
 
-    if(ret<0)
-        return ret;
-
-    pkt->pos= avio_tell(s);
-
-    ret= avio_read(s, pkt->data, size);
-    if(ret<=0)
-        av_free_packet(pkt);
-    else
-        av_shrink_packet(pkt, ret);
-
-    return ret;
+    return append_packet_chunked(s, pkt, size);
 }
 
 int av_append_packet(AVIOContext *s, AVPacket *pkt, int size)
 {
-    int ret;
-    int old_size;
     if (!pkt->size)
         return av_get_packet(s, pkt, size);
-    old_size = pkt->size;
-    ret = av_grow_packet(pkt, size);
-    if (ret < 0)
-        return ret;
-    ret = avio_read(s, pkt->data + old_size, size);
-    av_shrink_packet(pkt, old_size + FFMAX(ret, 0));
-    return ret;
+    return append_packet_chunked(s, pkt, size);
 }
 
 
@@ -279,7 +307,7 @@ AVInputFormat *av_probe_input_format2(AVProbeData *pd, int is_opened, int *score
             score = fmt1->read_probe(&lpd);
         } else if (fmt1->extensions) {
             if (av_match_ext(lpd.filename, fmt1->extensions)) {
-                score = 50;
+                score = AVPROBE_SCORE_EXTENSION;
             }
         }
         if (score > *score_max) {
@@ -290,18 +318,18 @@ AVInputFormat *av_probe_input_format2(AVProbeData *pd, int is_opened, int *score
     }
 
     /* a hack for files with huge id3v2 tags -- try to guess by file extension. */
-    if (!fmt && is_opened && *score_max < AVPROBE_SCORE_MAX/4) {
+    if (!fmt && is_opened && *score_max < AVPROBE_SCORE_EXTENSION / 2) {
         while ((fmt = av_iformat_next(fmt)))
             if (fmt->extensions && av_match_ext(lpd.filename, fmt->extensions)) {
-                *score_max = AVPROBE_SCORE_MAX/4;
+                *score_max = AVPROBE_SCORE_EXTENSION / 2;
                 break;
             }
     }
 
-    if (!fmt && id3 && *score_max < AVPROBE_SCORE_MAX/4-1) {
+    if (!fmt && id3 && *score_max < AVPROBE_SCORE_EXTENSION / 2 - 1) {
         while ((fmt = av_iformat_next(fmt)))
             if (fmt->extensions && av_match_ext("mp3", fmt->extensions)) {
-                *score_max = AVPROBE_SCORE_MAX/4-1;
+                *score_max = AVPROBE_SCORE_EXTENSION / 2 - 1;
                 break;
             }
     }
@@ -464,16 +492,20 @@ static AVPacket *add_to_pktbuf(AVPacketList **packet_buffer, AVPacket *pkt,
     return &pktl->pkt;
 }
 
-static void queue_attached_pictures(AVFormatContext *s)
+static int queue_attached_pictures(AVFormatContext *s)
 {
     int i;
     for (i = 0; i < s->nb_streams; i++)
         if (s->streams[i]->disposition & AV_DISPOSITION_ATTACHED_PIC &&
             s->streams[i]->discard < AVDISCARD_ALL) {
             AVPacket copy = s->streams[i]->attached_pic;
-            copy.destruct = NULL;
+            copy.buf      = av_buffer_ref(copy.buf);
+            if (!copy.buf)
+                return AVERROR(ENOMEM);
+
             add_to_pktbuf(&s->raw_packet_buffer, &copy, &s->raw_packet_buffer_end);
         }
+    return 0;
 }
 
 int avformat_open_input(AVFormatContext **ps, const char *filename, AVInputFormat *fmt, AVDictionary **options)
@@ -535,7 +567,8 @@ int avformat_open_input(AVFormatContext **ps, const char *filename, AVInputForma
         goto fail;
     ff_id3v2_free_extra_meta(&id3v2_extra_meta);
 
-    queue_attached_pictures(s);
+    if ((ret = queue_attached_pictures(s)) < 0)
+        goto fail;
 
     if (s->pb && !s->data_offset)
         s->data_offset = avio_tell(s->pb);
@@ -671,14 +704,6 @@ int ff_read_packet(AVFormatContext *s, AVPacket *pkt)
     }
 }
 
-#if FF_API_READ_PACKET
-int av_read_packet(AVFormatContext *s, AVPacket *pkt)
-{
-    return ff_read_packet(s, pkt);
-}
-#endif
-
-
 /**********************************************************/
 
 /**
@@ -695,7 +720,7 @@ int ff_get_audio_frame_size(AVCodecContext *enc, int size, int mux)
     if ((frame_size = av_get_audio_frame_duration(enc, size)) > 0)
         return frame_size;
 
-    /* fallback to using frame_size if muxing */
+    /* Fall back on using frame_size if muxing. */
     if (enc->frame_size > 1)
         return enc->frame_size;
 
@@ -1074,8 +1099,12 @@ static int parse_packet(AVFormatContext *s, AVPacket *pkt, int stream_index)
         }
 
         if (out_pkt.data == pkt->data && out_pkt.size == pkt->size) {
+            out_pkt.buf   = pkt->buf;
+            pkt->buf      = NULL;
+#if FF_API_DESTRUCT_PACKET
             out_pkt.destruct = pkt->destruct;
             pkt->destruct = NULL;
+#endif
         }
         if ((ret = av_dup_packet(&out_pkt)) < 0)
             goto fail;
@@ -1735,7 +1764,7 @@ int av_seek_frame(AVFormatContext *s, int stream_index, int64_t timestamp, int f
     int ret = seek_frame_internal(s, stream_index, timestamp, flags);
 
     if (ret >= 0)
-        queue_attached_pictures(s);
+        ret = queue_attached_pictures(s);
 
     return ret;
 }
@@ -1751,7 +1780,7 @@ int avformat_seek_file(AVFormatContext *s, int stream_index, int64_t min_ts, int
         ret = s->iformat->read_seek2(s, stream_index, min_ts, ts, max_ts, flags);
 
         if (ret >= 0)
-            queue_attached_pictures(s);
+            ret = queue_attached_pictures(s);
         return ret;
     }
 
@@ -1759,8 +1788,8 @@ int avformat_seek_file(AVFormatContext *s, int stream_index, int64_t min_ts, int
         //try to seek via read_timestamp()
     }
 
-    //Fallback to old API if new is not implemented but old is
-    //Note the old has somewat different sematics
+    // Fall back on old API if new is not implemented but old is.
+    // Note the old API has somewhat different semantics.
     if(s->iformat->read_seek || 1)
         return av_seek_frame(s, stream_index, ts, flags | ((uint64_t)ts - min_ts > (uint64_t)max_ts - ts ? AVSEEK_FLAG_BACKWARD : 0));
 
@@ -2275,9 +2304,6 @@ int avformat_find_stream_info(AVFormatContext *ic, AVDictionary **options)
     }
 
     for (i=0; i<ic->nb_streams; i++) {
-#if FF_API_R_FRAME_RATE
-        ic->streams[i]->info->last_dts = AV_NOPTS_VALUE;
-#endif
         ic->streams[i]->info->fps_first_dts = AV_NOPTS_VALUE;
         ic->streams[i]->info->fps_last_dts  = AV_NOPTS_VALUE;
     }
@@ -2426,31 +2452,6 @@ int avformat_find_stream_info(AVFormatContext *ic, AVDictionary **options)
                 break;
             }
         }
-#if FF_API_R_FRAME_RATE
-        {
-            int64_t last = st->info->last_dts;
-
-            if(pkt->dts != AV_NOPTS_VALUE && last != AV_NOPTS_VALUE && pkt->dts > last){
-                int64_t duration= pkt->dts - last;
-                double dur= duration * av_q2d(st->time_base);
-
-                if (st->info->duration_count < 2)
-                    memset(st->info->duration_error, 0, sizeof(st->info->duration_error));
-                for (i=1; i<FF_ARRAY_ELEMS(st->info->duration_error); i++) {
-                    int framerate= get_std_framerate(i);
-                    int ticks= lrintf(dur*framerate/(1001*12));
-                    double error = dur - (double)ticks*1001*12 / framerate;
-                    st->info->duration_error[i] += error*error;
-                }
-                st->info->duration_count++;
-                // ignore the first 4 values, they might have some random jitter
-                if (st->info->duration_count > 3)
-                    st->info->duration_gcd = av_gcd(st->info->duration_gcd, duration);
-            }
-            if (last == AV_NOPTS_VALUE || st->info->duration_count <= 1)
-                st->info->last_dts = pkt->dts;
-        }
-#endif
         if(st->parser && st->parser->parser->split && !st->codec->extradata){
             int i= st->parser->parser->split(st->codec, pkt->data, pkt->size);
             if (i > 0 && i < FF_MAX_EXTRADATA_SIZE) {
@@ -2513,30 +2514,6 @@ int avformat_find_stream_info(AVFormatContext *ic, AVDictionary **options)
                               best_fps, 12*1001, INT_MAX);
                 }
             }
-#if FF_API_R_FRAME_RATE
-            // the check for tb_unreliable() is not completely correct, since this is not about handling
-            // a unreliable/inexact time base, but a time base that is finer than necessary, as e.g.
-            // ipmovie.c produces.
-            if (tb_unreliable(st->codec) && st->info->duration_count > 15 && st->info->duration_gcd > 1 && !st->r_frame_rate.num)
-                av_reduce(&st->r_frame_rate.num, &st->r_frame_rate.den, st->time_base.den, st->time_base.num * st->info->duration_gcd, INT_MAX);
-            if (st->info->duration_count && !st->r_frame_rate.num
-                && tb_unreliable(st->codec)) {
-                int num = 0;
-                double best_error= 2*av_q2d(st->time_base);
-                best_error = best_error*best_error*st->info->duration_count*1000*12*30;
-
-                for (j=1; j<FF_ARRAY_ELEMS(st->info->duration_error); j++) {
-                    double error = st->info->duration_error[j] * get_std_framerate(j);
-                    if(error < best_error){
-                        best_error= error;
-                        num = get_std_framerate(j);
-                    }
-                }
-                // do not increase frame rate by more than 1 % in order to match a standard rate.
-                if (num && (!st->r_frame_rate.num || (double)num/(12*1001) < 1.01 * av_q2d(st->r_frame_rate)))
-                    av_reduce(&st->r_frame_rate.num, &st->r_frame_rate.den, num, 12*1001, INT_MAX);
-            }
-#endif
         }else if(st->codec->codec_type == AVMEDIA_TYPE_AUDIO) {
             if(!st->codec->bits_per_coded_sample)
                 st->codec->bits_per_coded_sample= av_get_bits_per_sample(st->codec->codec_id);
@@ -2671,6 +2648,7 @@ void avformat_free_context(AVFormatContext *s)
         if (st->attached_pic.data)
             av_free_packet(&st->attached_pic);
         av_dict_free(&st->metadata);
+        av_freep(&st->probe_data.buf);
         av_free(st->index_entries);
         av_free(st->codec->extradata);
         av_free(st->codec->subtitle_header);
@@ -2695,13 +2673,6 @@ void avformat_free_context(AVFormatContext *s)
     av_freep(&s->streams);
     av_free(s);
 }
-
-#if FF_API_CLOSE_INPUT_FILE
-void av_close_input_file(AVFormatContext *s)
-{
-    avformat_close_input(&s);
-}
-#endif
 
 void avformat_close_input(AVFormatContext **ps)
 {
@@ -2772,9 +2743,6 @@ AVStream *avformat_new_stream(AVFormatContext *s, AVCodec *c)
 
     st->sample_aspect_ratio = (AVRational){0,1};
 
-#if FF_API_R_FRAME_RATE
-    st->info->last_dts      = AV_NOPTS_VALUE;
-#endif
     st->info->fps_first_dts = AV_NOPTS_VALUE;
     st->info->fps_last_dts  = AV_NOPTS_VALUE;
 
@@ -2909,10 +2877,6 @@ static void dump_stream_format(AVFormatContext *ic, int i, int index, int is_out
     if(st->codec->codec_type == AVMEDIA_TYPE_VIDEO){
         if(st->avg_frame_rate.den && st->avg_frame_rate.num)
             print_fps(av_q2d(st->avg_frame_rate), "fps");
-#if FF_API_R_FRAME_RATE
-        if(st->r_frame_rate.den && st->r_frame_rate.num)
-            print_fps(av_q2d(st->r_frame_rate), "tbr");
-#endif
         if(st->time_base.den && st->time_base.num)
             print_fps(1/av_q2d(st->time_base), "tbn");
         if(st->codec->time_base.den && st->codec->time_base.num)
@@ -3021,13 +2985,6 @@ void av_dump_format(AVFormatContext *ic,
     av_free(printed);
 }
 
-#if FF_API_AV_GETTIME && CONFIG_SHARED && HAVE_SYMVER
-FF_SYMVER(int64_t, av_gettime, (void), "LIBAVFORMAT_54")
-{
-    return av_gettime();
-}
-#endif
-
 uint64_t ff_ntp_time(void)
 {
   return (av_gettime() / 1000) * 1000 + NTP_OFFSET_US;
@@ -3050,11 +3007,11 @@ int av_get_frame_filename(char *buf, int buf_size,
         if (c == '%') {
             do {
                 nd = 0;
-                while (isdigit(*p)) {
+                while (av_isdigit(*p)) {
                     nd = nd * 10 + *p++ - '0';
                 }
                 c = *p++;
-            } while (isdigit(c));
+            } while (av_isdigit(c));
 
             switch(c) {
             case '%':
@@ -3255,7 +3212,7 @@ int ff_hex_to_data(uint8_t *data, const char *p)
         p += strspn(p, SPACE_CHARS);
         if (*p == '\0')
             break;
-        c = toupper((unsigned char) *p++);
+        c = av_toupper((unsigned char) *p++);
         if (c >= '0' && c <= '9')
             c = c - '0';
         else if (c >= 'A' && c <= 'F')
@@ -3365,7 +3322,7 @@ void ff_parse_key_value(const char *str, ff_parse_key_val_cb callback_get_buf,
         int key_len, dest_len = 0;
 
         /* Skip whitespace and potential commas. */
-        while (*ptr && (isspace(*ptr) || *ptr == ','))
+        while (*ptr && (av_isspace(*ptr) || *ptr == ','))
             ptr++;
         if (!*ptr)
             break;
@@ -3398,7 +3355,7 @@ void ff_parse_key_value(const char *str, ff_parse_key_val_cb callback_get_buf,
             if (*ptr == '\"')
                 ptr++;
         } else {
-            for (; *ptr && !(isspace(*ptr) || *ptr == ','); ptr++)
+            for (; *ptr && !(av_isspace(*ptr) || *ptr == ','); ptr++)
                 if (dest && dest < dest_end)
                     *dest++ = *ptr;
         }
@@ -3588,4 +3545,58 @@ const struct AVCodecTag *avformat_get_riff_video_tags(void)
 const struct AVCodecTag *avformat_get_riff_audio_tags(void)
 {
     return ff_codec_wav_tags;
+}
+
+static int match_host_pattern(const char *pattern, const char *hostname)
+{
+    int len_p, len_h;
+    if (!strcmp(pattern, "*"))
+        return 1;
+    // Skip a possible *. at the start of the pattern
+    if (pattern[0] == '*')
+        pattern++;
+    if (pattern[0] == '.')
+        pattern++;
+    len_p = strlen(pattern);
+    len_h = strlen(hostname);
+    if (len_p > len_h)
+        return 0;
+    // Simply check if the end of hostname is equal to 'pattern'
+    if (!strcmp(pattern, &hostname[len_h - len_p])) {
+        if (len_h == len_p)
+            return 1; // Exact match
+        if (hostname[len_h - len_p - 1] == '.')
+            return 1; // The matched substring is a domain and not just a substring of a domain
+    }
+    return 0;
+}
+
+int ff_http_match_no_proxy(const char *no_proxy, const char *hostname)
+{
+    char *buf, *start;
+    int ret = 0;
+    if (!no_proxy)
+        return 0;
+    if (!hostname)
+        return 0;
+    buf = av_strdup(no_proxy);
+    if (!buf)
+        return 0;
+    start = buf;
+    while (start) {
+        char *sep, *next = NULL;
+        start += strspn(start, " ,");
+        sep = start + strcspn(start, " ,");
+        if (*sep) {
+            next = sep + 1;
+            *sep = '\0';
+        }
+        if (match_host_pattern(start, hostname)) {
+            ret = 1;
+            break;
+        }
+        start = next;
+    }
+    av_free(buf);
+    return ret;
 }

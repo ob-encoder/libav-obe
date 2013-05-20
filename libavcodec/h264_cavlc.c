@@ -25,7 +25,7 @@
  * @author Michael Niedermayer <michaelni@gmx.at>
  */
 
-#define CABAC 0
+#define CABAC(h) 0
 
 #include "internal.h"
 #include "avcodec.h"
@@ -708,7 +708,7 @@ int ff_h264_decode_mb_cavlc(H264Context *h){
             h->mb_skip_run= get_ue_golomb(&h->gb);
 
         if (h->mb_skip_run--) {
-            if(FRAME_MBAFF && (h->mb_y&1) == 0){
+            if(FRAME_MBAFF(h) && (h->mb_y&1) == 0){
                 if(h->mb_skip_run==0)
                     h->mb_mbaff = h->mb_field_decoding_flag = get_bits1(&h->gb);
             }
@@ -716,7 +716,7 @@ int ff_h264_decode_mb_cavlc(H264Context *h){
             return 0;
         }
     }
-    if(FRAME_MBAFF){
+    if (FRAME_MBAFF(h)) {
         if( (h->mb_y&1) == 0 )
             h->mb_mbaff = h->mb_field_decoding_flag = get_bits1(&h->gb);
     }
@@ -755,30 +755,25 @@ decode_intra_mb:
         mb_type= i_mb_type_info[mb_type].type;
     }
 
-    if(MB_FIELD)
+    if(MB_FIELD(h))
         mb_type |= MB_TYPE_INTERLACED;
 
     h->slice_table[ mb_xy ]= h->slice_num;
 
     if(IS_INTRA_PCM(mb_type)){
-        unsigned int x;
         const int mb_size = ff_h264_mb_sizes[h->sps.chroma_format_idc] *
-                            h->sps.bit_depth_luma >> 3;
+                            h->sps.bit_depth_luma;
 
         // We assume these blocks are very rare so we do not optimize it.
-        align_get_bits(&h->gb);
-
-        // The pixels are stored in the same order as levels in h->mb array.
-        for(x=0; x < mb_size; x++){
-            ((uint8_t*)h->mb)[x]= get_bits(&h->gb, 8);
-        }
+        h->intra_pcm_ptr = align_get_bits(&h->gb);
+        skip_bits_long(&h->gb, mb_size);
 
         // In deblocking, the quantizer is 0
-        h->cur_pic.f.qscale_table[mb_xy] = 0;
+        h->cur_pic.qscale_table[mb_xy] = 0;
         // All coeffs are present
         memset(h->non_zero_count[mb_xy], 16, 48);
 
-        h->cur_pic.f.mb_type[mb_xy] = mb_type;
+        h->cur_pic.mb_type[mb_xy] = mb_type;
         return 0;
     }
 
@@ -861,7 +856,7 @@ decode_intra_mb:
         }
 
         for(list=0; list<h->list_count; list++){
-            int ref_count = IS_REF0(mb_type) ? 1 : h->ref_count[list] << MB_MBAFF;
+            int ref_count = IS_REF0(mb_type) ? 1 : h->ref_count[list] << MB_MBAFF(h);
             for(i=0; i<4; i++){
                 if(IS_DIRECT(h->sub_mb_type[i])) continue;
                 if(IS_DIR(h->sub_mb_type[i], 0, list)){
@@ -941,7 +936,7 @@ decode_intra_mb:
             for(list=0; list<h->list_count; list++){
                     unsigned int val;
                     if(IS_DIR(mb_type, 0, list)){
-                        int rc = h->ref_count[list] << MB_MBAFF;
+                        int rc = h->ref_count[list] << MB_MBAFF(h);
                         if (rc == 1) {
                             val= 0;
                         } else if (rc == 2) {
@@ -972,7 +967,7 @@ decode_intra_mb:
                     for(i=0; i<2; i++){
                         unsigned int val;
                         if(IS_DIR(mb_type, i, list)){
-                            int rc = h->ref_count[list] << MB_MBAFF;
+                            int rc = h->ref_count[list] << MB_MBAFF(h);
                             if (rc == 1) {
                                 val= 0;
                             } else if (rc == 2) {
@@ -1010,7 +1005,7 @@ decode_intra_mb:
                     for(i=0; i<2; i++){
                         unsigned int val;
                         if(IS_DIR(mb_type, i, list)){ //FIXME optimize
-                            int rc = h->ref_count[list] << MB_MBAFF;
+                            int rc = h->ref_count[list] << MB_MBAFF(h);
                             if (rc == 1) {
                                 val= 0;
                             } else if (rc == 2) {
@@ -1073,7 +1068,7 @@ decode_intra_mb:
     }
     h->cbp=
     h->cbp_table[mb_xy]= cbp;
-    h->cur_pic.f.mb_type[mb_xy] = mb_type;
+    h->cur_pic.mb_type[mb_xy] = mb_type;
 
     if(cbp || IS_INTRA16x16(mb_type)){
         int i4x4, i8x8, chroma_idx;
@@ -1111,14 +1106,14 @@ decode_intra_mb:
             return -1;
         }
         h->cbp_table[mb_xy] |= ret << 12;
-        if(CHROMA444){
+        if (CHROMA444(h)) {
             if( decode_luma_residual(h, gb, scan, scan8x8, pixel_shift, mb_type, cbp, 1) < 0 ){
                 return -1;
             }
             if( decode_luma_residual(h, gb, scan, scan8x8, pixel_shift, mb_type, cbp, 2) < 0 ){
                 return -1;
             }
-        } else if (CHROMA422) {
+        } else if (CHROMA422(h)) {
             if(cbp&0x30){
                 for(chroma_idx=0; chroma_idx<2; chroma_idx++)
                     if (decode_residual(h, gb, h->mb + ((256 + 16*16*chroma_idx) << pixel_shift),
@@ -1173,7 +1168,7 @@ decode_intra_mb:
         fill_rectangle(&h->non_zero_count_cache[scan8[16]], 4, 4, 8, 0, 1);
         fill_rectangle(&h->non_zero_count_cache[scan8[32]], 4, 4, 8, 0, 1);
     }
-    h->cur_pic.f.qscale_table[mb_xy] = h->qscale;
+    h->cur_pic.qscale_table[mb_xy] = h->qscale;
     write_back_non_zero_count(h);
 
     return 0;

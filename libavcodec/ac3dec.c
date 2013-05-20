@@ -874,7 +874,7 @@ static int decode_audio_block(AC3DecodeContext *s, int blk)
             /* check for enhanced coupling */
             if (s->eac3 && get_bits1(gbc)) {
                 /* TODO: parse enhanced coupling strategy info */
-                av_log_missing_feature(s->avctx, "Enhanced coupling", 1);
+                avpriv_request_sample(s->avctx, "Enhanced coupling");
                 return AVERROR_PATCHWELCOME;
             }
 
@@ -1336,8 +1336,10 @@ static int ac3_decode_frame(AVCodecContext * avctx, void *data,
     if (!err) {
         avctx->sample_rate = s->sample_rate;
         avctx->bit_rate    = s->bit_rate;
+    }
 
-        /* channel config */
+    /* channel config */
+    if (!err || (s->channels && s->out_channels != s->channels)) {
         s->out_channels = s->channels;
         s->output_mode  = s->channel_mode;
         if (s->lfe_on)
@@ -1356,20 +1358,20 @@ static int ac3_decode_frame(AVCodecContext * avctx, void *data,
                 s->fbw_channels == s->out_channels)) {
             set_downmix_coeffs(s);
         }
-    } else if (!s->out_channels) {
-        s->out_channels = avctx->channels;
-        if (s->out_channels < s->channels)
-            s->output_mode  = s->out_channels == 1 ? AC3_CHMODE_MONO : AC3_CHMODE_STEREO;
+    } else if (!s->channels) {
+        av_log(avctx, AV_LOG_ERROR, "unable to determine channel mode\n");
+        return AVERROR_INVALIDDATA;
     }
+    avctx->channels = s->out_channels;
+
     /* set audio service type based on bitstream mode for AC-3 */
     avctx->audio_service_type = s->bitstream_mode;
     if (s->bitstream_mode == 0x7 && s->channels > 1)
         avctx->audio_service_type = AV_AUDIO_SERVICE_TYPE_KARAOKE;
 
     /* get output buffer */
-    avctx->channels = s->out_channels;
     frame->nb_samples = s->num_blocks * 256;
-    if ((ret = ff_get_buffer(avctx, frame)) < 0) {
+    if ((ret = ff_get_buffer(avctx, frame, 0)) < 0) {
         av_log(avctx, AV_LOG_ERROR, "get_buffer() failed\n");
         return ret;
     }

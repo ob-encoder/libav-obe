@@ -83,7 +83,6 @@
 #include "avcodec.h"
 #include "internal.h"
 #include "get_bits.h"
-#include "dsputil.h"
 #include "fft.h"
 #include "fmtconvert.h"
 #include "lpc.h"
@@ -142,6 +141,8 @@ static av_cold int che_configure(AACContext *ac,
                                  enum ChannelPosition che_pos,
                                  int type, int id, int *channels)
 {
+    if (*channels >= MAX_CHANNELS)
+        return AVERROR_INVALIDDATA;
     if (che_pos) {
         if (!ac->che[type][id]) {
             if (!(ac->che[type][id] = av_mallocz(sizeof(ChannelElement))))
@@ -180,8 +181,9 @@ static int frame_configure_elements(AVCodecContext *avctx)
     }
 
     /* get output buffer */
+    av_frame_unref(ac->frame);
     ac->frame->nb_samples = 2048;
-    if ((ret = ff_get_buffer(avctx, ac->frame)) < 0) {
+    if ((ret = ff_get_buffer(avctx, ac->frame, 0)) < 0) {
         av_log(avctx, AV_LOG_ERROR, "get_buffer() failed\n");
         return ret;
     }
@@ -670,7 +672,7 @@ static int decode_ga_specific_config(AACContext *ac, AVCodecContext *avctx,
     int tags = 0;
 
     if (get_bits1(gb)) { // frameLengthFlag
-        av_log_missing_feature(avctx, "960/120 MDCT window", 1);
+        avpriv_request_sample(avctx, "960/120 MDCT window");
         return AVERROR_PATCHWELCOME;
     }
 
@@ -1115,10 +1117,10 @@ static int decode_scalefactors(AACContext *ac, float sf[120], GetBitContext *gb,
                     offset[2] += get_vlc2(gb, vlc_scalefactors.table, 7, 3) - 60;
                     clipped_offset = av_clip(offset[2], -155, 100);
                     if (offset[2] != clipped_offset) {
-                        av_log_ask_for_sample(ac->avctx, "Intensity stereo "
-                                "position clipped (%d -> %d).\nIf you heard an "
-                                "audible artifact, there may be a bug in the "
-                                "decoder. ", offset[2], clipped_offset);
+                        avpriv_request_sample(ac->avctx,
+                                              "If you heard an audible artifact, there may be a bug in the decoder. "
+                                              "Clipped intensity stereo position (%d -> %d)",
+                                              offset[2], clipped_offset);
                     }
                     sf[idx] = ff_aac_pow2sf_tab[-clipped_offset + POW_SF2_ZERO];
                 }
@@ -1130,10 +1132,10 @@ static int decode_scalefactors(AACContext *ac, float sf[120], GetBitContext *gb,
                         offset[1] += get_vlc2(gb, vlc_scalefactors.table, 7, 3) - 60;
                     clipped_offset = av_clip(offset[1], -100, 155);
                     if (offset[1] != clipped_offset) {
-                        av_log_ask_for_sample(ac->avctx, "Noise gain clipped "
-                                "(%d -> %d).\nIf you heard an audible "
-                                "artifact, there may be a bug in the decoder. ",
-                                offset[1], clipped_offset);
+                        avpriv_request_sample(ac->avctx,
+                                              "If you heard an audible artifact, there may be a bug in the decoder. "
+                                              "Clipped noise gain (%d -> %d)",
+                                              offset[1], clipped_offset);
                     }
                     sf[idx] = -ff_aac_pow2sf_tab[clipped_offset + POW_SF2_ZERO];
                 }
@@ -1660,7 +1662,7 @@ static int decode_ics(AACContext *ac, SingleChannelElement *sce,
         if ((tns->present = get_bits1(gb)) && decode_tns(ac, tns, gb, ics))
             return -1;
         if (get_bits1(gb)) {
-            av_log_missing_feature(ac->avctx, "SSR", 1);
+            avpriv_request_sample(ac->avctx, "SSR");
             return AVERROR_PATCHWELCOME;
         }
     }
@@ -2347,7 +2349,8 @@ static int parse_adts_frame_header(AACContext *ac, GetBitContext *gb)
     size = avpriv_aac_parse_header(gb, &hdr_info);
     if (size > 0) {
         if (hdr_info.num_aac_frames != 1) {
-            av_log_missing_feature(ac->avctx, "More than one AAC RDB per ADTS frame", 0);
+            avpriv_report_missing_feature(ac->avctx,
+                                          "More than one AAC RDB per ADTS frame");
             return AVERROR_PATCHWELCOME;
         }
         push_output_configuration(ac);
@@ -2619,8 +2622,8 @@ static int latm_decode_audio_specific_config(struct LATMContext *latmctx,
         asclen         = get_bits_left(gb);
 
     if (config_start_bit % 8) {
-        av_log_missing_feature(latmctx->aac_ctx.avctx,
-                               "Non-byte-aligned audio-specific config", 1);
+        avpriv_request_sample(latmctx->aac_ctx.avctx,
+                              "Non-byte-aligned audio-specific config");
         return AVERROR_PATCHWELCOME;
     }
     if (asclen <= 0)
@@ -2674,8 +2677,7 @@ static int read_stream_mux_config(struct LATMContext *latmctx,
         skip_bits(gb, 6);                       // numSubFrames
         // numPrograms
         if (get_bits(gb, 4)) {                  // numPrograms
-            av_log_missing_feature(latmctx->aac_ctx.avctx,
-                                   "Multiple programs", 1);
+            avpriv_request_sample(latmctx->aac_ctx.avctx, "Multiple programs");
             return AVERROR_PATCHWELCOME;
         }
 
@@ -2683,8 +2685,7 @@ static int read_stream_mux_config(struct LATMContext *latmctx,
 
         // for each layer (which there is only on in DVB)
         if (get_bits(gb, 3)) {                   // numLayer
-            av_log_missing_feature(latmctx->aac_ctx.avctx,
-                                   "Multiple layers", 1);
+            avpriv_request_sample(latmctx->aac_ctx.avctx, "Multiple layers");
             return AVERROR_PATCHWELCOME;
         }
 

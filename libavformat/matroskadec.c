@@ -962,7 +962,7 @@ static int matroska_probe(AVProbeData *p)
     }
 
     // probably valid EBML header but no recognized doctype
-    return AVPROBE_SCORE_MAX/2;
+    return AVPROBE_SCORE_EXTENSION;
 }
 
 static MatroskaTrack *matroska_find_track_by_num(MatroskaDemuxContext *matroska,
@@ -1107,7 +1107,8 @@ static int matroska_decode_buffer(uint8_t** buf, int* buf_size,
 static void matroska_fix_ass_packet(MatroskaDemuxContext *matroska,
                                     AVPacket *pkt, uint64_t display_duration)
 {
-    char *line, *layer, *ptr = pkt->data, *end = ptr+pkt->size;
+    AVBufferRef *line;
+    char *layer, *ptr = pkt->data, *end = ptr+pkt->size;
     for (; *ptr!=',' && ptr<end-1; ptr++);
     if (*ptr == ',')
         layer = ++ptr;
@@ -1125,13 +1126,14 @@ static void matroska_fix_ass_packet(MatroskaDemuxContext *matroska,
         es = ec/   100;  ec -=    100*es;
         *ptr++ = '\0';
         len = 50 + end-ptr + FF_INPUT_BUFFER_PADDING_SIZE;
-        if (!(line = av_malloc(len)))
+        if (!(line = av_buffer_alloc(len)))
             return;
-        snprintf(line,len,"Dialogue: %s,%d:%02d:%02d.%02d,%d:%02d:%02d.%02d,%s\r\n",
+        snprintf(line->data, len,"Dialogue: %s,%d:%02d:%02d.%02d,%d:%02d:%02d.%02d,%s\r\n",
                  layer, sh, sm, ss, sc, eh, em, es, ec, ptr);
-        av_free(pkt->data);
-        pkt->data = line;
-        pkt->size = strlen(line);
+        av_buffer_unref(&pkt->buf);
+        pkt->buf  = line;
+        pkt->data = line->data;
+        pkt->size = strlen(line->data);
     }
 }
 
@@ -1494,7 +1496,7 @@ static int matroska_read_header(AVFormatContext *s)
                    && track->codec_priv.data != NULL) {
             int ret;
             ffio_init_context(&b, track->codec_priv.data, track->codec_priv.size,
-                          AVIO_FLAG_READ, NULL, NULL, NULL, NULL);
+                              0, NULL, NULL, NULL, NULL);
             ret = ff_get_wav_header(&b, st->codec, track->codec_priv.size);
             if (ret < 0)
                 return ret;
@@ -1645,9 +1647,6 @@ static int matroska_read_header(AVFormatContext *s)
             if (track->default_duration) {
                 av_reduce(&st->avg_frame_rate.num, &st->avg_frame_rate.den,
                           1000000000, track->default_duration, 30000);
-#if FF_API_R_FRAME_RATE
-                st->r_frame_rate = st->avg_frame_rate;
-#endif
             }
         } else if (track->type == MATROSKA_TRACK_TYPE_AUDIO) {
             st->codec->codec_type = AVMEDIA_TYPE_AUDIO;
@@ -1757,10 +1756,10 @@ static void matroska_clear_queue(MatroskaDemuxContext *matroska)
 }
 
 static int matroska_parse_laces(MatroskaDemuxContext *matroska, uint8_t **buf,
-                                int size, int type,
+                                int* buf_size, int type,
                                 uint32_t **lace_buf, int *laces)
 {
-    int res = 0, n;
+    int res = 0, n, size = *buf_size;
     uint8_t *data = *buf;
     uint32_t *lace_size;
 
@@ -1821,7 +1820,7 @@ static int matroska_parse_laces(MatroskaDemuxContext *matroska, uint8_t **buf,
 
     case 0x3: /* EBML lacing */ {
         uint64_t num;
-        uint32_t total;
+        uint64_t total;
         n = matroska_ebmlnum_uint(matroska, data, size, &num);
         if (n < 0) {
             av_log(matroska->ctx, AV_LOG_INFO,
@@ -1858,6 +1857,7 @@ static int matroska_parse_laces(MatroskaDemuxContext *matroska, uint8_t **buf,
 
     *buf      = data;
     *lace_buf = lace_size;
+    *buf_size = size;
 
     return res;
 }
@@ -2052,7 +2052,7 @@ static int matroska_parse_block(MatroskaDemuxContext *matroska, uint8_t *data,
         matroska->skip_to_keyframe = 0;
     }
 
-    res = matroska_parse_laces(matroska, &data, size, (flags & 0x06) >> 1,
+    res = matroska_parse_laces(matroska, &data, &size, (flags & 0x06) >> 1,
                                &lace_size, &laces);
 
     if (res)
@@ -2080,7 +2080,8 @@ static int matroska_parse_block(MatroskaDemuxContext *matroska, uint8_t *data,
              st->codec->codec_id == AV_CODEC_ID_ATRAC3) &&
              st->codec->block_align && track->audio.sub_packet_size) {
 
-            res = matroska_parse_rm_audio(matroska, track, st, data, size,
+            res = matroska_parse_rm_audio(matroska, track, st, data,
+                                          lace_size[n],
                                           timecode, duration, pos);
             if (res)
                 goto end;
@@ -2096,7 +2097,6 @@ static int matroska_parse_block(MatroskaDemuxContext *matroska, uint8_t *data,
         if (timecode != AV_NOPTS_VALUE)
             timecode = duration ? timecode + duration : AV_NOPTS_VALUE;
         data += lace_size[n];
-        size -= lace_size[n];
     }
 
 end:

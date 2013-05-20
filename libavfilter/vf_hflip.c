@@ -74,40 +74,40 @@ static int query_formats(AVFilterContext *ctx)
 
 static int config_props(AVFilterLink *inlink)
 {
-    FlipContext *flip = inlink->dst->priv;
+    FlipContext *s = inlink->dst->priv;
     const AVPixFmtDescriptor *pix_desc = av_pix_fmt_desc_get(inlink->format);
 
-    av_image_fill_max_pixsteps(flip->max_step, NULL, pix_desc);
-    flip->hsub = pix_desc->log2_chroma_w;
-    flip->vsub = pix_desc->log2_chroma_h;
+    av_image_fill_max_pixsteps(s->max_step, NULL, pix_desc);
+    s->hsub = pix_desc->log2_chroma_w;
+    s->vsub = pix_desc->log2_chroma_h;
 
     return 0;
 }
 
-static int filter_frame(AVFilterLink *inlink, AVFilterBufferRef *in)
+static int filter_frame(AVFilterLink *inlink, AVFrame *in)
 {
     AVFilterContext *ctx  = inlink->dst;
-    FlipContext *flip     = ctx->priv;
+    FlipContext *s     = ctx->priv;
     AVFilterLink *outlink = ctx->outputs[0];
-    AVFilterBufferRef *out;
+    AVFrame *out;
     uint8_t *inrow, *outrow;
     int i, j, plane, step, hsub, vsub;
 
-    out = ff_get_video_buffer(outlink, AV_PERM_WRITE, outlink->w, outlink->h);
+    out = ff_get_video_buffer(outlink, outlink->w, outlink->h);
     if (!out) {
-        avfilter_unref_bufferp(&in);
+        av_frame_free(&in);
         return AVERROR(ENOMEM);
     }
-    avfilter_copy_buffer_ref_props(out, in);
+    av_frame_copy_props(out, in);
 
     for (plane = 0; plane < 4 && in->data[plane]; plane++) {
-        step = flip->max_step[plane];
-        hsub = (plane == 1 || plane == 2) ? flip->hsub : 0;
-        vsub = (plane == 1 || plane == 2) ? flip->vsub : 0;
+        step = s->max_step[plane];
+        hsub = (plane == 1 || plane == 2) ? s->hsub : 0;
+        vsub = (plane == 1 || plane == 2) ? s->vsub : 0;
 
         outrow = out->data[plane];
         inrow  = in ->data[plane] + ((inlink->w >> hsub) - 1) * step;
-        for (i = 0; i < in->video->h >> vsub; i++) {
+        for (i = 0; i < in->height >> vsub; i++) {
             switch (step) {
             case 1:
                 for (j = 0; j < (inlink->w >> hsub); j++)
@@ -153,7 +153,7 @@ static int filter_frame(AVFilterLink *inlink, AVFilterBufferRef *in)
         }
     }
 
-    avfilter_unref_bufferp(&in);
+    av_frame_free(&in);
     return ff_filter_frame(outlink, out);
 }
 
@@ -163,7 +163,6 @@ static const AVFilterPad avfilter_vf_hflip_inputs[] = {
         .type         = AVMEDIA_TYPE_VIDEO,
         .filter_frame = filter_frame,
         .config_props = config_props,
-        .min_perms    = AV_PERM_READ,
     },
     { NULL }
 };

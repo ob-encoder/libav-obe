@@ -627,11 +627,17 @@ VC1_MSPEL_MC(op_avg, avg_)
 /* pixel functions - really are entry points to vc1_mspel_mc */
 
 #define PUT_VC1_MSPEL(a, b)\
-static void put_vc1_mspel_mc ## a ## b ##_c(uint8_t *dst, const uint8_t *src, int stride, int rnd) { \
-     put_vc1_mspel_mc(dst, src, stride, a, b, rnd);                         \
-}\
-static void avg_vc1_mspel_mc ## a ## b ##_c(uint8_t *dst, const uint8_t *src, int stride, int rnd) { \
-     avg_vc1_mspel_mc(dst, src, stride, a, b, rnd);                         \
+static void put_vc1_mspel_mc ## a ## b ##_c(uint8_t *dst,               \
+                                            const uint8_t *src,         \
+                                            ptrdiff_t stride, int rnd)  \
+{                                                                       \
+    put_vc1_mspel_mc(dst, src, stride, a, b, rnd);                      \
+}                                                                       \
+static void avg_vc1_mspel_mc ## a ## b ##_c(uint8_t *dst,               \
+                                            const uint8_t *src,         \
+                                            ptrdiff_t stride, int rnd)  \
+{                                                                       \
+    avg_vc1_mspel_mc(dst, src, stride, a, b, rnd);                      \
 }
 
 PUT_VC1_MSPEL(1, 0)
@@ -848,8 +854,8 @@ av_cold void ff_vc1dsp_init(VC1DSPContext* dsp) {
     dsp->sprite_v_double_twoscale = sprite_v_double_twoscale_c;
 #endif
 
-    if (HAVE_ALTIVEC)
-        ff_vc1dsp_init_altivec(dsp);
     if (ARCH_X86)
         ff_vc1dsp_init_x86(dsp);
+    if (ARCH_PPC)
+        ff_vc1dsp_init_ppc(dsp);
 }

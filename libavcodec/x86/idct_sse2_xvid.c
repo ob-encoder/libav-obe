@@ -38,12 +38,11 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#include "libavcodec/dsputil.h"
 #include "libavutil/internal.h"
 #include "libavutil/mem.h"
 #include "libavutil/x86/asm.h"
 #include "idct_xvid.h"
-#include "dsputil_mmx.h"
+#include "dsputil_x86.h"
 
 #if HAVE_INLINE_ASM
 

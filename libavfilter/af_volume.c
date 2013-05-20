@@ -24,7 +24,7 @@
  * audio volume filter
  */
 
-#include "libavutil/audioconvert.h"
+#include "libavutil/channel_layout.h"
 #include "libavutil/common.h"
 #include "libavutil/eval.h"
 #include "libavutil/float_dsp.h"
@@ -60,18 +60,9 @@ static const AVClass volume_class = {
     .version    = LIBAVUTIL_VERSION_INT,
 };
 
-static av_cold int init(AVFilterContext *ctx, const char *args)
+static av_cold int init(AVFilterContext *ctx)
 {
     VolumeContext *vol = ctx->priv;
-    int ret;
-
-    vol->class = &volume_class;
-    av_opt_set_defaults(vol);
-
-    if ((ret = av_set_options_string(vol, args, "=", ":")) < 0) {
-        av_log(ctx, AV_LOG_ERROR, "Error parsing options string '%s'.\n", args);
-        return ret;
-    }
 
     if (vol->precision == PRECISION_FIXED) {
         vol->volume_i = (int)(vol->volume * 256 + 0.5);
@@ -84,8 +75,7 @@ static av_cold int init(AVFilterContext *ctx, const char *args)
                precision_str[vol->precision]);
     }
 
-    av_opt_free(vol);
-    return ret;
+    return 0;
 }
 
 static int query_formats(AVFilterContext *ctx)
@@ -184,7 +174,7 @@ static inline void scale_samples_s32(uint8_t *dst, const uint8_t *src,
 
 
 
-static void volume_init(VolumeContext *vol)
+static av_cold void volume_init(VolumeContext *vol)
 {
     vol->samples_align = 1;
 
@@ -233,21 +223,21 @@ static int config_output(AVFilterLink *outlink)
     return 0;
 }
 
-static int filter_frame(AVFilterLink *inlink, AVFilterBufferRef *buf)
+static int filter_frame(AVFilterLink *inlink, AVFrame *buf)
 {
     VolumeContext *vol    = inlink->dst->priv;
     AVFilterLink *outlink = inlink->dst->outputs[0];
-    int nb_samples        = buf->audio->nb_samples;
-    AVFilterBufferRef *out_buf;
+    int nb_samples        = buf->nb_samples;
+    AVFrame *out_buf;
 
     if (vol->volume == 1.0 || vol->volume_i == 256)
         return ff_filter_frame(outlink, buf);
 
     /* do volume scaling in-place if input buffer is writable */
-    if (buf->perms & AV_PERM_WRITE) {
+    if (av_frame_is_writable(buf)) {
         out_buf = buf;
     } else {
-        out_buf = ff_get_audio_buffer(inlink, AV_PERM_WRITE, nb_samples);
+        out_buf = ff_get_audio_buffer(inlink, nb_samples);
         if (!out_buf)
             return AVERROR(ENOMEM);
         out_buf->pts = buf->pts;
@@ -283,7 +273,7 @@ static int filter_frame(AVFilterLink *inlink, AVFilterBufferRef *buf)
     }
 
     if (buf != out_buf)
-        avfilter_unref_buffer(buf);
+        av_frame_free(&buf);
 
     return ff_filter_frame(outlink, out_buf);
 }
@@ -311,6 +301,7 @@ AVFilter avfilter_af_volume = {
     .description    = NULL_IF_CONFIG_SMALL("Change input volume."),
     .query_formats  = query_formats,
     .priv_size      = sizeof(VolumeContext),
+    .priv_class     = &volume_class,
     .init           = init,
     .inputs         = avfilter_af_volume_inputs,
     .outputs        = avfilter_af_volume_outputs,

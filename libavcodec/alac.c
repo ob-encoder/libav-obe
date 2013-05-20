@@ -283,7 +283,7 @@ static int decode_element(AVCodecContext *avctx, AVFrame *frame, int ch_index,
     if (!alac->nb_samples) {
         /* get output buffer */
         frame->nb_samples = output_samples;
-        if ((ret = ff_get_buffer(avctx, frame)) < 0) {
+        if ((ret = ff_get_buffer(avctx, frame, 0)) < 0) {
             av_log(avctx, AV_LOG_ERROR, "get_buffer() failed\n");
             return ret;
         }
@@ -535,8 +535,7 @@ static av_cold int alac_decode_init(AVCodecContext * avctx)
     case 24:
     case 32: avctx->sample_fmt = AV_SAMPLE_FMT_S32P;
              break;
-    default: av_log_ask_for_sample(avctx, "Sample depth %d is not supported.\n",
-                                   alac->sample_size);
+    default: avpriv_request_sample(avctx, "Sample depth %d", alac->sample_size);
              return AVERROR_PATCHWELCOME;
     }
     avctx->bits_per_raw_sample = alac->sample_size;

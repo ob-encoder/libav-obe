@@ -36,7 +36,6 @@
 #include "libavutil/lfg.h"
 #include "libavutil/random_seed.h"
 #include "avcodec.h"
-#include "dsputil.h"
 #include "fft.h"
 #include "fmtconvert.h"
 #include "internal.h"
@@ -167,7 +166,7 @@ static int decode_tag(AVCodecContext *avctx, void *data,
 
     /* get output buffer */
     frame->nb_samples = NELLY_SAMPLES * blocks;
-    if ((ret = ff_get_buffer(avctx, frame)) < 0) {
+    if ((ret = ff_get_buffer(avctx, frame, 0)) < 0) {
         av_log(avctx, AV_LOG_ERROR, "get_buffer() failed\n");
         return ret;
     }

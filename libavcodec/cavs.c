@@ -276,7 +276,7 @@ static void intra_pred_plane(uint8_t *d,uint8_t *top,uint8_t *left,int stride)
     int x, y, ia;
     int ih = 0;
     int iv = 0;
-    uint8_t *cm = ff_cropTbl + MAX_NEG_CROP;
+    const uint8_t *cm = ff_cropTbl + MAX_NEG_CROP;
 
     for (x = 0; x < 4; x++) {
         ih += (x + 1) * (top [5 + x] - top [3 - x]);
@@ -708,17 +708,17 @@ void ff_cavs_init_pic(AVSContext *h) {
  */
 void ff_cavs_init_top_lines(AVSContext *h) {
     /* alloc top line of predictors */
-    h->top_qp       = av_malloc( h->mb_width);
-    h->top_mv[0]    = av_malloc((h->mb_width*2+1)*sizeof(cavs_vector));
-    h->top_mv[1]    = av_malloc((h->mb_width*2+1)*sizeof(cavs_vector));
-    h->top_pred_Y   = av_malloc( h->mb_width*2*sizeof(*h->top_pred_Y));
-    h->top_border_y = av_malloc((h->mb_width+1)*16);
-    h->top_border_u = av_malloc( h->mb_width * 10);
-    h->top_border_v = av_malloc( h->mb_width * 10);
+    h->top_qp       = av_mallocz( h->mb_width);
+    h->top_mv[0]    = av_mallocz((h->mb_width*2+1)*sizeof(cavs_vector));
+    h->top_mv[1]    = av_mallocz((h->mb_width*2+1)*sizeof(cavs_vector));
+    h->top_pred_Y   = av_mallocz( h->mb_width*2*sizeof(*h->top_pred_Y));
+    h->top_border_y = av_mallocz((h->mb_width+1)*16);
+    h->top_border_u = av_mallocz( h->mb_width * 10);
+    h->top_border_v = av_mallocz( h->mb_width * 10);
 
     /* alloc space for co-located MVs and types */
-    h->col_mv       = av_malloc( h->mb_width*h->mb_height*4*sizeof(cavs_vector));
-    h->col_type_base = av_malloc(h->mb_width*h->mb_height);
+    h->col_mv       = av_mallocz( h->mb_width*h->mb_height*4*sizeof(cavs_vector));
+    h->col_type_base = av_mallocz(h->mb_width*h->mb_height);
     h->block        = av_mallocz(64*sizeof(int16_t));
 }
 
@@ -736,9 +736,9 @@ av_cold int ff_cavs_init(AVCodecContext *avctx) {
     h->avctx = avctx;
     avctx->pix_fmt= AV_PIX_FMT_YUV420P;
 
-    h->cur.f    = avcodec_alloc_frame();
-    h->DPB[0].f = avcodec_alloc_frame();
-    h->DPB[1].f = avcodec_alloc_frame();
+    h->cur.f    = av_frame_alloc();
+    h->DPB[0].f = av_frame_alloc();
+    h->DPB[1].f = av_frame_alloc();
     if (!h->cur.f || !h->DPB[0].f || !h->DPB[1].f) {
         ff_cavs_end(avctx);
         return AVERROR(ENOMEM);
@@ -769,15 +769,9 @@ av_cold int ff_cavs_init(AVCodecContext *avctx) {
 av_cold int ff_cavs_end(AVCodecContext *avctx) {
     AVSContext *h = avctx->priv_data;
 
-    if (h->cur.f->data[0])
-        avctx->release_buffer(avctx, h->cur.f);
-    if (h->DPB[0].f->data[0])
-        avctx->release_buffer(avctx, h->DPB[0].f);
-    if (h->DPB[1].f->data[0])
-        avctx->release_buffer(avctx, h->DPB[1].f);
-    avcodec_free_frame(&h->cur.f);
-    avcodec_free_frame(&h->DPB[0].f);
-    avcodec_free_frame(&h->DPB[1].f);
+    av_frame_free(&h->cur.f);
+    av_frame_free(&h->DPB[0].f);
+    av_frame_free(&h->DPB[1].f);
 
     av_free(h->top_qp);
     av_free(h->top_mv[0]);

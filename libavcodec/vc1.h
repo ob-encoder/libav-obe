@@ -372,6 +372,7 @@ typedef struct VC1Context{
     int qs_last;            ///< if qpel has been used in the previous (tr.) picture
     int bmvtype;
     int frfd, brfd;         ///< reference frame distance (forward or backward)
+    int first_pic_header_flag;
     int pic_header_flag;
 
     /** Frame decoding info for sprite modes */
@@ -455,9 +456,9 @@ int ff_vc1_parse_frame_header    (VC1Context *v, GetBitContext *gb);
 int ff_vc1_parse_frame_header_adv(VC1Context *v, GetBitContext *gb);
 int ff_vc1_init_common(VC1Context *v);
 
-av_cold int  ff_vc1_decode_init_alloc_tables(VC1Context *v);
-av_cold void ff_vc1_init_transposed_scantables(VC1Context *v);
-av_cold int  ff_vc1_decode_end(AVCodecContext *avctx);
+int  ff_vc1_decode_init_alloc_tables(VC1Context *v);
+void ff_vc1_init_transposed_scantables(VC1Context *v);
+int  ff_vc1_decode_end(AVCodecContext *avctx);
 void ff_vc1_decode_blocks(VC1Context *v);
 
 #endif /* AVCODEC_VC1_H */

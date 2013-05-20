@@ -94,7 +94,6 @@
 #include "get_bits.h"
 #include "put_bits.h"
 #include "wmaprodata.h"
-#include "dsputil.h"
 #include "sinewin.h"
 #include "wma.h"
 #include "wma_common.h"
@@ -278,6 +277,11 @@ static av_cold int decode_init(AVCodecContext *avctx)
     int log2_max_num_subframes;
     int num_possible_block_sizes;
 
+    if (!avctx->block_align) {
+        av_log(avctx, AV_LOG_ERROR, "block_align is not set\n");
+        return AVERROR(EINVAL);
+    }
+
     s->avctx = avctx;
     avpriv_float_dsp_init(&s->fdsp, avctx->flags & CODEC_FLAG_BITEXACT);
 
@@ -295,7 +299,7 @@ static av_cold int decode_init(AVCodecContext *avctx)
         av_dlog(avctx, "\n");
 
     } else {
-        av_log_ask_for_sample(avctx, "Unknown extradata size\n");
+        avpriv_request_sample(avctx, "Unknown extradata size");
         return AVERROR_PATCHWELCOME;
     }
 
@@ -310,7 +314,7 @@ static av_cold int decode_init(AVCodecContext *avctx)
     /** get frame len */
     bits = ff_wma_get_frame_len_bits(avctx->sample_rate, 3, s->decode_flags);
     if (bits > WMAPRO_BLOCK_MAX_BITS) {
-        av_log_missing_feature(avctx, "14-bits block sizes", 1);
+        avpriv_request_sample(avctx, "14-bit block sizes");
         return AVERROR_PATCHWELCOME;
     }
     s->samples_per_frame = 1 << bits;
@@ -342,7 +346,8 @@ static av_cold int decode_init(AVCodecContext *avctx)
                avctx->channels);
         return AVERROR_INVALIDDATA;
     } else if (avctx->channels > WMAPRO_MAX_CHANNELS) {
-        av_log_ask_for_sample(avctx, "unsupported number of channels\n");
+        avpriv_request_sample(avctx,
+                              "More than %d channels", WMAPRO_MAX_CHANNELS);
         return AVERROR_PATCHWELCOME;
     }
 
@@ -672,8 +677,8 @@ static int decode_channel_transform(WMAProDecodeCtx* s)
         int remaining_channels = s->channels_for_cur_subframe;
 
         if (get_bits1(&s->gb)) {
-            av_log_ask_for_sample(s->avctx,
-                                  "unsupported channel transform bit\n");
+            avpriv_request_sample(s->avctx,
+                                  "Channel transform bit");
             return AVERROR_PATCHWELCOME;
         }
 
@@ -709,8 +714,8 @@ static int decode_channel_transform(WMAProDecodeCtx* s)
             if (chgroup->num_channels == 2) {
                 if (get_bits1(&s->gb)) {
                     if (get_bits1(&s->gb)) {
-                        av_log_ask_for_sample(s->avctx,
-                                              "unsupported channel transform type\n");
+                        avpriv_request_sample(s->avctx,
+                                              "Unknown channel transform type");
                     }
                 } else {
                     chgroup->transform = 1;
@@ -735,8 +740,8 @@ static int decode_channel_transform(WMAProDecodeCtx* s)
                     } else {
                         /** FIXME: more than 6 coupled channels not supported */
                         if (chgroup->num_channels > 6) {
-                            av_log_ask_for_sample(s->avctx,
-                                                  "coupled channels > 6\n");
+                            avpriv_request_sample(s->avctx,
+                                                  "Coupled channels > 6");
                         } else {
                             memcpy(chgroup->decorrelation_matrix,
                                    default_decorrelation[chgroup->num_channels],
@@ -1143,7 +1148,7 @@ static int decode_subframe(WMAProDecodeCtx *s)
 
     /** no idea for what the following bit is used */
     if (get_bits1(&s->gb)) {
-        av_log_ask_for_sample(s->avctx, "reserved bit set\n");
+        avpriv_request_sample(s->avctx, "Reserved bit");
         return AVERROR_PATCHWELCOME;
     }
 
@@ -1363,7 +1368,7 @@ static int decode_frame(WMAProDecodeCtx *s, AVFrame *frame, int *got_frame_ptr)
 
     /* get output buffer */
     frame->nb_samples = s->samples_per_frame;
-    if ((ret = ff_get_buffer(avctx, frame)) < 0) {
+    if ((ret = ff_get_buffer(avctx, frame, 0)) < 0) {
         av_log(avctx, AV_LOG_ERROR, "get_buffer() failed\n");
         s->packet_loss = 1;
         return 0;
@@ -1384,6 +1389,7 @@ static int decode_frame(WMAProDecodeCtx *s, AVFrame *frame, int *got_frame_ptr)
     if (s->skip_frame) {
         s->skip_frame = 0;
         *got_frame_ptr = 0;
+        av_frame_unref(frame);
     } else {
         *got_frame_ptr = 1;
     }
@@ -1448,7 +1454,7 @@ static void save_bits(WMAProDecodeCtx *s, GetBitContext* gb, int len,
     buflen = (s->num_saved_bits + len + 8) >> 3;
 
     if (len <= 0 || buflen > MAX_FRAMESIZE) {
-        av_log_ask_for_sample(s->avctx, "input buffer too small\n");
+        avpriv_request_sample(s->avctx, "Too small input buffer");
         s->packet_loss = 1;
         return;
     }
@@ -1498,8 +1504,11 @@ static int decode_packet(AVCodecContext *avctx, void *data,
         s->packet_done = 0;
 
         /** sanity check for the buffer length */
-        if (buf_size < avctx->block_align)
-            return 0;
+        if (buf_size < avctx->block_align) {
+            av_log(avctx, AV_LOG_ERROR, "Input packet too small (%d < %d)\n",
+                   buf_size, avctx->block_align);
+            return AVERROR_INVALIDDATA;
+        }
 
         s->next_packet_start = buf_size - avctx->block_align;
         buf_size = avctx->block_align;

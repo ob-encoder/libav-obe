@@ -30,7 +30,6 @@
 #include "libavutil/common.h"
 #include "libavutil/float_dsp.h"
 #include "libavutil/internal.h"
-#include "libavutil/intmath.h"
 #include "libavutil/intreadwrite.h"
 #include "libavutil/mathematics.h"
 #include "libavutil/samplefmt.h"
@@ -41,7 +40,7 @@
 #include "dcadata.h"
 #include "dcahuff.h"
 #include "dca.h"
-#include "dca_parser.h"
+#include "mathops.h"
 #include "synth_filter.h"
 #include "dcadsp.h"
 #include "fmtconvert.h"
@@ -1598,14 +1597,15 @@ static void dca_exss_parse_header(DCAContext *s)
 
         num_audiop = get_bits(&s->gb, 3) + 1;
         if (num_audiop > 1) {
-            av_log_ask_for_sample(s->avctx, "Multiple DTS-HD audio presentations.");
+            avpriv_request_sample(s->avctx,
+                                  "Multiple DTS-HD audio presentations");
             /* ignore such streams for now */
             return;
         }
 
         num_assets = get_bits(&s->gb, 3) + 1;
         if (num_assets > 1) {
-            av_log_ask_for_sample(s->avctx, "Multiple DTS-HD audio assets.");
+            avpriv_request_sample(s->avctx, "Multiple DTS-HD audio assets");
             /* ignore such streams for now */
             return;
         }
@@ -1836,7 +1836,7 @@ static int dca_decode_frame(AVCodecContext *avctx, void *data,
 
     /* get output buffer */
     frame->nb_samples = 256 * (s->sample_blocks / 8);
-    if ((ret = ff_get_buffer(avctx, frame)) < 0) {
+    if ((ret = ff_get_buffer(avctx, frame, 0)) < 0) {
         av_log(avctx, AV_LOG_ERROR, "get_buffer() failed\n");
         return ret;
     }

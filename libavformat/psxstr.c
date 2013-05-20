@@ -94,7 +94,7 @@ static int str_probe(AVProbeData *p)
 
     /* MPEG files (like those ripped from VCDs) can also look like this;
      * only return half certainty */
-    return 50;
+    return AVPROBE_SCORE_EXTENSION;
 }
 
 static int str_read_header(AVFormatContext *s)
@@ -201,6 +201,10 @@ static int str_read_packet(AVFormatContext *s,
                     *ret_pkt = *pkt;
                     pkt->data= NULL;
                     pkt->size= -1;
+                    pkt->buf = NULL;
+#if FF_API_DESTRUCT_PACKET
+                    pkt->destruct = NULL;
+#endif
                     return 0;
                 }
 

@@ -31,37 +31,26 @@
 #include "libavutil/pixdesc.h"
 #include "libavutil/imgutils.h"
 #include "libavutil/internal.h"
+#include "libavutil/opt.h"
 #include "avfilter.h"
 #include "formats.h"
 #include "internal.h"
 #include "video.h"
 
+enum TransposeDir {
+    TRANSPOSE_CCLOCK_FLIP,
+    TRANSPOSE_CLOCK,
+    TRANSPOSE_CCLOCK,
+    TRANSPOSE_CLOCK_FLIP,
+};
+
 typedef struct {
+    const AVClass *class;
     int hsub, vsub;
     int pixsteps[4];
 
-    /* 0    Rotate by 90 degrees counterclockwise and vflip. */
-    /* 1    Rotate by 90 degrees clockwise.                  */
-    /* 2    Rotate by 90 degrees counterclockwise.           */
-    /* 3    Rotate by 90 degrees clockwise and vflip.        */
-    int dir;
+    enum TransposeDir dir;
 } TransContext;
-
-static av_cold int init(AVFilterContext *ctx, const char *args)
-{
-    TransContext *trans = ctx->priv;
-    trans->dir = 0;
-
-    if (args)
-        sscanf(args, "%d", &trans->dir);
-
-    if (trans->dir < 0 || trans->dir > 3) {
-        av_log(ctx, AV_LOG_ERROR, "Invalid value %d not between 0 and 3.\n",
-               trans->dir);
-        return AVERROR(EINVAL);
-    }
-    return 0;
-}
 
 static int query_formats(AVFilterContext *ctx)
 {
@@ -121,35 +110,35 @@ static int config_props_output(AVFilterLink *outlink)
     return 0;
 }
 
-static int filter_frame(AVFilterLink *inlink, AVFilterBufferRef *in)
+static int filter_frame(AVFilterLink *inlink, AVFrame *in)
 {
     AVFilterLink *outlink = inlink->dst->outputs[0];
     TransContext *trans = inlink->dst->priv;
-    AVFilterBufferRef *out;
+    AVFrame *out;
     int plane;
 
-    out = ff_get_video_buffer(outlink, AV_PERM_WRITE, outlink->w, outlink->h);
+    out = ff_get_video_buffer(outlink, outlink->w, outlink->h);
     if (!out) {
-        avfilter_unref_bufferp(&in);
+        av_frame_free(&in);
         return AVERROR(ENOMEM);
     }
 
     out->pts = in->pts;
 
-    if (in->video->pixel_aspect.num == 0) {
-        out->video->pixel_aspect = in->video->pixel_aspect;
+    if (in->sample_aspect_ratio.num == 0) {
+        out->sample_aspect_ratio = in->sample_aspect_ratio;
     } else {
-        out->video->pixel_aspect.num = in->video->pixel_aspect.den;
-        out->video->pixel_aspect.den = in->video->pixel_aspect.num;
+        out->sample_aspect_ratio.num = in->sample_aspect_ratio.den;
+        out->sample_aspect_ratio.den = in->sample_aspect_ratio.num;
     }
 
     for (plane = 0; out->data[plane]; plane++) {
         int hsub = plane == 1 || plane == 2 ? trans->hsub : 0;
         int vsub = plane == 1 || plane == 2 ? trans->vsub : 0;
         int pixstep = trans->pixsteps[plane];
-        int inh  = in->video->h>>vsub;
-        int outw = out->video->w>>hsub;
-        int outh = out->video->h>>vsub;
+        int inh  = in->height  >> vsub;
+        int outw = out->width  >> hsub;
+        int outh = out->height >> vsub;
         uint8_t *dst, *src;
         int dstlinesize, srclinesize;
         int x, y;
@@ -194,16 +183,34 @@ static int filter_frame(AVFilterLink *inlink, AVFilterBufferRef *in)
         }
     }
 
-    avfilter_unref_bufferp(&in);
+    av_frame_free(&in);
     return ff_filter_frame(outlink, out);
 }
+
+#define OFFSET(x) offsetof(TransContext, x)
+#define FLAGS AV_OPT_FLAG_VIDEO_PARAM
+static const AVOption options[] = {
+    { "dir", "Transpose direction", OFFSET(dir), AV_OPT_TYPE_INT, { .i64 = TRANSPOSE_CCLOCK_FLIP },
+        TRANSPOSE_CCLOCK_FLIP, TRANSPOSE_CLOCK_FLIP, FLAGS, "dir" },
+        { "cclock_flip", "counter-clockwise with vertical flip", 0, AV_OPT_TYPE_CONST, { .i64 = TRANSPOSE_CCLOCK_FLIP }, .unit = "dir" },
+        { "clock",       "clockwise",                            0, AV_OPT_TYPE_CONST, { .i64 = TRANSPOSE_CLOCK       }, .unit = "dir" },
+        { "cclock",      "counter-clockwise",                    0, AV_OPT_TYPE_CONST, { .i64 = TRANSPOSE_CCLOCK      }, .unit = "dir" },
+        { "clock_flip",  "clockwise with vertical flip",         0, AV_OPT_TYPE_CONST, { .i64 = TRANSPOSE_CLOCK_FLIP  }, .unit = "dir" },
+    { NULL },
+};
+
+static const AVClass transpose_class = {
+    .class_name = "transpose",
+    .item_name  = av_default_item_name,
+    .option     = options,
+    .version    = LIBAVUTIL_VERSION_INT,
+};
 
 static const AVFilterPad avfilter_vf_transpose_inputs[] = {
     {
         .name        = "default",
         .type        = AVMEDIA_TYPE_VIDEO,
         .filter_frame = filter_frame,
-        .min_perms   = AV_PERM_READ,
     },
     { NULL }
 };
@@ -221,8 +228,8 @@ AVFilter avfilter_vf_transpose = {
     .name      = "transpose",
     .description = NULL_IF_CONFIG_SMALL("Transpose input video."),
 
-    .init = init,
     .priv_size = sizeof(TransContext),
+    .priv_class = &transpose_class,
 
     .query_formats = query_formats,
 

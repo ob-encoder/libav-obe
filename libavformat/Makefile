@@ -380,7 +380,8 @@ SKIPHEADERS-$(CONFIG_NETWORK)            += network.h rtsp.h
 EXAMPLES  = metadata                                                    \
             output                                                      \
 
-TESTPROGS = seek                                                        \
+TESTPROGS = noproxy                                                     \
+            seek                                                        \
             srtp                                                        \
             url                                                         \
 
@@ -389,4 +390,4 @@ TOOLS     = aviocat                                                     \
             pktdumper                                                   \
             probetest                                                   \
 
-$(SUBDIR)output-example$(EXESUF): ELIBS = $(patsubst %,$(LD_LIB),swscale)
+$(SUBDIR)output-example$(EXESUF): ELIBS = $(patsubst %,$(LD_LIB),swscale avutil)

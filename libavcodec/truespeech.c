@@ -63,7 +63,7 @@ static av_cold int truespeech_decode_init(AVCodecContext * avctx)
     TSContext *c = avctx->priv_data;
 
     if (avctx->channels != 1) {
-        av_log_ask_for_sample(avctx, "Unsupported channel count: %d\n", avctx->channels);
+        avpriv_request_sample(avctx, "Channel count %d", avctx->channels);
         return AVERROR_PATCHWELCOME;
     }
 
@@ -325,7 +325,7 @@ static int truespeech_decode_frame(AVCodecContext *avctx, void *data,
 
     /* get output buffer */
     frame->nb_samples = iterations * 240;
-    if ((ret = ff_get_buffer(avctx, frame)) < 0) {
+    if ((ret = ff_get_buffer(avctx, frame, 0)) < 0) {
         av_log(avctx, AV_LOG_ERROR, "get_buffer() failed\n");
         return ret;
     }

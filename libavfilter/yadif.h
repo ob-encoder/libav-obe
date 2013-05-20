@@ -23,6 +23,7 @@
 #include "avfilter.h"
 
 typedef struct YADIFContext {
+    const AVClass *class;
     /**
      * 0: send 1 frame for each frame
      * 1: send 1 frame for each field
@@ -46,21 +47,19 @@ typedef struct YADIFContext {
      */
     int auto_enable;
 
-    AVFilterBufferRef *cur;
-    AVFilterBufferRef *next;
-    AVFilterBufferRef *prev;
-    AVFilterBufferRef *out;
+    AVFrame *cur;
+    AVFrame *next;
+    AVFrame *prev;
+    AVFrame *out;
 
     /**
      * Required alignment for filter_line
      */
-    int req_align;
     void (*filter_line)(void *dst,
                         void *prev, void *cur, void *next,
                         int w, int prefs, int mrefs, int parity, int mode);
     void (*filter_edges)(void *dst, void *prev, void *cur, void *next,
-                         int w, int prefs, int mrefs, int parity, int mode,
-                         int l_edge);
+                         int w, int prefs, int mrefs, int parity, int mode);
 
     const AVPixFmtDescriptor *csp;
     int eof;

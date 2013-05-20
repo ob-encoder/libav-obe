@@ -3,10 +3,10 @@ AREF = tests/data/asynth1.sw
 
 OBJDIRS += tests/data tests/vsynth1
 
-tests/vsynth1/00.pgm: tests/videogen$(HOSTEXESUF) | tests/vsynth1
+$(VREF): tests/videogen$(HOSTEXESUF) | tests/vsynth1
 	$(M)./$< 'tests/vsynth1/'
 
-tests/data/asynth1.sw: tests/audiogen$(HOSTEXESUF) | tests/data
+$(AREF): tests/audiogen$(HOSTEXESUF) | tests/data
 	$(M)./$< $@
 
 tests/data/asynth-%.wav: tests/audiogen$(HOSTEXESUF) | tests/data
@@ -38,10 +38,13 @@ ENCDEC2 = $(call ALLYES, $(firstword $(1))_ENCODER $(lastword $(1))_DECODER  \
 DEMDEC  = $(call ALLYES, $(1)_DEMUXER $(2:%=%_DECODER))
 ENCMUX  = $(call ALLYES, $(1:%=%_ENCODER) $(2)_MUXER)
 
+FILTERDEMDEC       = $(call ALLYES, $(1)_FILTER $(2)_DEMUXER $(3)_DECODER)
+FILTERDEMDECMUX    = $(call ALLYES, $(1)_FILTER $(2)_DEMUXER $(3)_DECODER $(4)_MUXER)
+FILTERDEMDECENCMUX = $(call ALLYES, $(1)_FILTER $(2)_DEMUXER $(3)_DECODER $(4)_ENCODER $(5)_MUXER)
+
 include $(SRC_PATH)/tests/fate/acodec.mak
 include $(SRC_PATH)/tests/fate/vcodec.mak
 include $(SRC_PATH)/tests/fate/avformat.mak
-include $(SRC_PATH)/tests/fate/avfilter.mak
 include $(SRC_PATH)/tests/fate/seek.mak
 
 include $(SRC_PATH)/tests/fate/aac.mak
@@ -60,7 +63,8 @@ include $(SRC_PATH)/tests/fate/demux.mak
 include $(SRC_PATH)/tests/fate/dfa.mak
 include $(SRC_PATH)/tests/fate/dpcm.mak
 include $(SRC_PATH)/tests/fate/ea.mak
-include $(SRC_PATH)/tests/fate/filter.mak
+include $(SRC_PATH)/tests/fate/filter-audio.mak
+include $(SRC_PATH)/tests/fate/filter-video.mak
 include $(SRC_PATH)/tests/fate/flac.mak
 include $(SRC_PATH)/tests/fate/fft.mak
 include $(SRC_PATH)/tests/fate/h264.mak
@@ -118,10 +122,25 @@ fate: $(FATE)
 
 $(FATE): $(FATE_UTILS:%=tests/%$(HOSTEXESUF))
 	@echo "TEST    $(@:fate-%=%)"
-	$(Q)$(SRC_PATH)/tests/fate-run.sh $@ "$(SAMPLES)" "$(TARGET_EXEC)" "$(TARGET_PATH)" '$(CMD)' '$(CMP)' '$(REF)' '$(FUZZ)' '$(THREADS)' '$(THREAD_TYPE)' '$(CPUFLAGS)' '$(CMP_SHIFT)' '$(CMP_TARGET)' '$(SIZE_TOLERANCE)' '$(CMP_UNIT)'
+	$(Q)$(SRC_PATH)/tests/fate-run.sh $@ "$(SAMPLES)" "$(TARGET_EXEC)" "$(TARGET_PATH)" '$(CMD)' '$(CMP)' '$(REF)' '$(FUZZ)' '$(THREADS)' '$(THREAD_TYPE)' '$(CPUFLAGS)' '$(CMP_SHIFT)' '$(CMP_TARGET)' '$(SIZE_TOLERANCE)' '$(CMP_UNIT)' '$(GEN)'
 
 fate-list:
 	@printf '%s\n' $(sort $(FATE))
+
+coverage.info: TAG = LCOV
+coverage.info:
+	$(M)lcov -q -d $(CURDIR) -b $(SRC_PATH) --capture | \
+	    sed "s,$(CURDIR)/\./,$(CURDIR)/," > $@
+	$(M)lcov -q --remove $@ "/usr/include*" -o $@
+
+lcov:  TAG = GENHTML
+lcov: coverage.info
+	$(M)genhtml -q -o $(CURDIR)/lcov $<
+
+lcov-reset: TAG = LCOV
+lcov-reset:
+	$(M)lcov -d $(CURDIR) --zerocounters
+	$(Q)$(RM) -f coverage.info
 
 clean:: testclean
 
@@ -132,4 +151,5 @@ testclean:
 
 -include $(wildcard tests/*.d)
 
-.PHONY: fate*
+.PHONY: fate* lcov lcov-reset
+.INTERMEDIATE: coverage.info

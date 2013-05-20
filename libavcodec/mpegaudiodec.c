@@ -24,6 +24,7 @@
  * MPEG Audio decoder
  */
 
+#include "libavutil/attributes.h"
 #include "libavutil/avassert.h"
 #include "libavutil/channel_layout.h"
 #include "libavutil/float_dsp.h"
@@ -32,7 +33,6 @@
 #include "internal.h"
 #include "mathops.h"
 #include "mpegaudiodsp.h"
-#include "dsputil.h"
 
 /*
  * TODO:
@@ -166,7 +166,7 @@ static const int32_t scale_factor_mult2[3][3] = {
  * Convert region offsets to region sizes and truncate
  * size to big_values.
  */
-static void ff_region_offset2size(GranuleDef *g)
+static void region_offset2size(GranuleDef *g)
 {
     int i, k, j = 0;
     g->region_size[2] = 576 / 2;
@@ -177,7 +177,7 @@ static void ff_region_offset2size(GranuleDef *g)
     }
 }
 
-static void ff_init_short_region(MPADecodeContext *s, GranuleDef *g)
+static void init_short_region(MPADecodeContext *s, GranuleDef *g)
 {
     if (g->block_type == 2) {
         if (s->sample_rate_index != 8)
@@ -195,7 +195,8 @@ static void ff_init_short_region(MPADecodeContext *s, GranuleDef *g)
     g->region_size[1] = (576 / 2);
 }
 
-static void ff_init_long_region(MPADecodeContext *s, GranuleDef *g, int ra1, int ra2)
+static void init_long_region(MPADecodeContext *s, GranuleDef *g,
+                             int ra1, int ra2)
 {
     int l;
     g->region_size[0] = band_index_long[s->sample_rate_index][ra1 + 1] >> 1;
@@ -204,7 +205,7 @@ static void ff_init_long_region(MPADecodeContext *s, GranuleDef *g, int ra1, int
     g->region_size[1] = band_index_long[s->sample_rate_index][      l] >> 1;
 }
 
-static void ff_compute_band_indexes(MPADecodeContext *s, GranuleDef *g)
+static void compute_band_indexes(MPADecodeContext *s, GranuleDef *g)
 {
     if (g->block_type == 2) {
         if (g->switch_point) {
@@ -1355,7 +1356,7 @@ static int mp_decode_layer3(MPADecodeContext *s)
                     g->table_select[i] = get_bits(&s->gb, 5);
                 for (i = 0; i < 3; i++)
                     g->subblock_gain[i] = get_bits(&s->gb, 3);
-                ff_init_short_region(s, g);
+                init_short_region(s, g);
             } else {
                 int region_address1, region_address2;
                 g->block_type = 0;
@@ -1367,10 +1368,10 @@ static int mp_decode_layer3(MPADecodeContext *s)
                 region_address2 = get_bits(&s->gb, 3);
                 av_dlog(s->avctx, "region1=%d region2=%d\n",
                         region_address1, region_address2);
-                ff_init_long_region(s, g, region_address1, region_address2);
+                init_long_region(s, g, region_address1, region_address2);
             }
-            ff_region_offset2size(g);
-            ff_compute_band_indexes(s, g);
+            region_offset2size(g);
+            compute_band_indexes(s, g);
 
             g->preflag = 0;
             if (!s->lsf)
@@ -1612,7 +1613,7 @@ static int mp_decode_frame(MPADecodeContext *s, OUT_INT **samples,
     if (!samples) {
         av_assert0(s->frame != NULL);
         s->frame->nb_samples = s->avctx->frame_size;
-        if ((ret = ff_get_buffer(s->avctx, s->frame)) < 0) {
+        if ((ret = ff_get_buffer(s->avctx, s->frame, 0)) < 0) {
             av_log(s->avctx, AV_LOG_ERROR, "get_buffer() failed\n");
             return ret;
         }
@@ -1820,7 +1821,7 @@ static av_cold int decode_close_mp3on4(AVCodecContext * avctx)
 }
 
 
-static int decode_init_mp3on4(AVCodecContext * avctx)
+static av_cold int decode_init_mp3on4(AVCodecContext * avctx)
 {
     MP3On4DecodeContext *s = avctx->priv_data;
     MPEG4AudioConfig cfg;
@@ -1908,7 +1909,7 @@ static int decode_frame_mp3on4(AVCodecContext *avctx, void *data,
 
     /* get output buffer */
     frame->nb_samples = MPA_FRAME_SIZE;
-    if ((ret = ff_get_buffer(avctx, frame)) < 0) {
+    if ((ret = ff_get_buffer(avctx, frame, 0)) < 0) {
         av_log(avctx, AV_LOG_ERROR, "get_buffer() failed\n");
         return ret;
     }

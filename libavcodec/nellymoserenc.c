@@ -40,7 +40,6 @@
 #include "nellymoser.h"
 #include "avcodec.h"
 #include "audio_frame_queue.h"
-#include "dsputil.h"
 #include "fft.h"
 #include "internal.h"
 #include "sinewin.h"
@@ -141,9 +140,6 @@ static av_cold int encode_end(AVCodecContext *avctx)
         av_free(s->path);
     }
     ff_af_queue_close(&s->afq);
-#if FF_API_OLD_ENCODE_AUDIO
-    av_freep(&avctx->coded_frame);
-#endif
 
     return 0;
 }
@@ -187,14 +183,6 @@ static av_cold int encode_init(AVCodecContext *avctx)
             goto error;
         }
     }
-
-#if FF_API_OLD_ENCODE_AUDIO
-    avctx->coded_frame = avcodec_alloc_frame();
-    if (!avctx->coded_frame) {
-        ret = AVERROR(ENOMEM);
-        goto error;
-    }
-#endif
 
     return 0;
 error:

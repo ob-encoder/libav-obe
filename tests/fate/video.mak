@@ -22,6 +22,9 @@ fate-ansi: CMD = framecrc -chars_per_frame 44100 -i $(SAMPLES)/ansi/TRE-IOM5.ANS
 FATE_SAMPLES_AVCONV-$(call DEMDEC, RPL, ESCAPE124) += fate-armovie-escape124
 fate-armovie-escape124: CMD = framecrc -i $(SAMPLES)/rpl/ESCAPE.RPL -pix_fmt rgb24
 
+FATE_SAMPLES_AVCONV-$(call DEMDEC, RPL, ESCAPE130) += fate-armovie-escape130
+fate-armovie-escape130: CMD = framecrc -i $(SAMPLES)/rpl/landing.rpl -an
+
 FATE_SAMPLES_AVCONV-$(call DEMDEC, AVI, AURA) += fate-auravision-v1
 fate-auravision-v1: CMD = framecrc -i $(SAMPLES)/auravision/SOUVIDEO.AVI -an
 
@@ -151,6 +154,9 @@ fate-interplay-mve-8bit: CMD = framecrc -i $(SAMPLES)/interplay-mve/interplay-lo
 FATE_SAMPLES_AVCONV-$(call DEMDEC, IPMOVIE, INTERPLAY_VIDEO) += fate-interplay-mve-16bit
 fate-interplay-mve-16bit: CMD = framecrc -i $(SAMPLES)/interplay-mve/descent3-level5-16bit-partial.mve -pix_fmt rgb24 -an
 
+FATE_SAMPLES_AVCONV-$(call DEMDEC, MXF, JPEG2000) += fate-jpeg2000-dcinema
+fate-jpeg2000-dcinema: CMD = framecrc -flags +bitexact -i $(SAMPLES)/jpeg2000/chiens_dcinema2K.mxf -pix_fmt xyz12le
+
 FATE_SAMPLES_AVCONV-$(call DEMDEC, AVI, KGV1) += fate-kgv1
 fate-kgv1: CMD = framecrc -i $(SAMPLES)/kega/kgv1.avi -pix_fmt rgb555le -an
 
@@ -173,7 +179,7 @@ FATE_SAMPLES_AVCONV-$(call DEMDEC, MVI, MOTIONPIXELS) += fate-motionpixels
 fate-motionpixels: CMD = framecrc -i $(SAMPLES)/motion-pixels/INTRO-partial.MVI -an -pix_fmt rgb24 -vframes 111
 
 FATE_SAMPLES_AVCONV-$(call DEMDEC, MPEGTS, MPEG2VIDEO) += fate-mpeg2-field-enc
-fate-mpeg2-field-enc: CMD = framecrc -flags +bitexact -dct fastint -idct simple -i $(SAMPLES)/mpeg2/mpeg2_field_encoding.ts -an
+fate-mpeg2-field-enc: CMD = framecrc -flags +bitexact -idct simple -i $(SAMPLES)/mpeg2/mpeg2_field_encoding.ts -an -vframes 30
 
 # FIXME dropped frames in this test because of coarse timebase
 FATE_NUV += fate-nuv-rtjpeg
@@ -240,7 +246,7 @@ FATE_SAMPLES_AVCONV-$(call DEMDEC, MOV, V410) += fate-v410dec
 fate-v410dec: CMD = framecrc -i $(SAMPLES)/v410/lenav410.mov -pix_fmt yuv444p10le
 
 FATE_SAMPLES_AVCONV-$(call ENCDEC, V410 PGMYUV, AVI IMAGE2) += fate-v410enc
-fate-v410enc: tests/vsynth1/00.pgm
+fate-v410enc: $(VREF)
 fate-v410enc: CMD = md5 -f image2 -vcodec pgmyuv -i $(TARGET_PATH)/tests/vsynth1/%02d.pgm -flags +bitexact -vcodec v410 -f avi
 
 FATE_SAMPLES_AVCONV-$(call DEMDEC, SIFF, VB) += fate-vb

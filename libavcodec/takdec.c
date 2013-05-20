@@ -685,7 +685,7 @@ static int tak_decode_frame(AVCodecContext *avctx, void *data,
         return ret;
 
     if (s->ti.flags & TAK_FRAME_FLAG_HAS_METADATA) {
-        av_log_missing_feature(avctx, "frame metadata", 1);
+        avpriv_request_sample(avctx, "Frame metadata");
         return AVERROR_PATCHWELCOME;
     }
 
@@ -740,7 +740,7 @@ static int tak_decode_frame(AVCodecContext *avctx, void *data,
                                              : s->ti.frame_samples;
 
     frame->nb_samples = s->nb_samples;
-    if ((ret = ff_get_buffer(avctx, frame)) < 0)
+    if ((ret = ff_get_buffer(avctx, frame, 0)) < 0)
         return ret;
 
     if (avctx->bits_per_coded_sample <= 16) {

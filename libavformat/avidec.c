@@ -758,7 +758,7 @@ static int avi_read_header(AVFormatContext *s)
 static int read_gab2_sub(AVStream *st, AVPacket *pkt) {
     if (!strcmp(pkt->data, "GAB2") && AV_RL16(pkt->data+5) == 2) {
         uint8_t desc[256];
-        int score = AVPROBE_SCORE_MAX / 2, ret;
+        int score = AVPROBE_SCORE_EXTENSION, ret;
         AVIStream *ast = st->priv_data;
         AVInputFormat *sub_demuxer;
         AVRational time_base;
@@ -980,7 +980,9 @@ static int avi_read_packet(AVFormatContext *s, AVPacket *pkt)
     AVIContext *avi = s->priv_data;
     AVIOContext *pb = s->pb;
     int err;
+#if FF_API_DESTRUCT_PACKET
     void* dstr;
+#endif
 
     if (CONFIG_DV_DEMUXER && avi->dv_demux) {
         int size = avpriv_dv_get_packet(avi->dv_demux, pkt);
@@ -1081,10 +1083,16 @@ resync:
         }
 
         if (CONFIG_DV_DEMUXER && avi->dv_demux) {
+            AVBufferRef *avbuf = pkt->buf;
+#if FF_API_DESTRUCT_PACKET
             dstr = pkt->destruct;
+#endif
             size = avpriv_dv_produce_packet(avi->dv_demux, pkt,
                                     pkt->data, pkt->size);
+#if FF_API_DESTRUCT_PACKET
             pkt->destruct = dstr;
+#endif
+            pkt->buf = avbuf;
             pkt->flags |= AV_PKT_FLAG_KEY;
             if (size < 0)
                 av_free_packet(pkt);

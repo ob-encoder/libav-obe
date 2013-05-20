@@ -28,7 +28,6 @@
  */
 
 #define BITSTREAM_READER_LE
-//#define DEBUG
 #include <limits.h>
 #include "avcodec.h"
 #include "get_bits.h"
@@ -222,7 +221,7 @@ static av_cold int tta_decode_init(AVCodecContext * avctx)
             return -1;
         }
         if (s->format == FORMAT_ENCRYPTED) {
-            av_log_missing_feature(s->avctx, "Encrypted TTA", 0);
+            avpriv_report_missing_feature(s->avctx, "Encrypted TTA");
             return AVERROR_PATCHWELCOME;
         }
         avctx->channels = s->channels = get_bits(&s->gb, 16);
@@ -325,7 +324,7 @@ static int tta_decode_frame(AVCodecContext *avctx, void *data,
 
     /* get output buffer */
     frame->nb_samples = framelen;
-    if ((ret = ff_get_buffer(avctx, frame)) < 0) {
+    if ((ret = ff_get_buffer(avctx, frame, 0)) < 0) {
         av_log(avctx, AV_LOG_ERROR, "get_buffer() failed\n");
         return ret;
     }

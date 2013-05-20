@@ -333,9 +333,6 @@ ff_rm_read_mdpr_codecdata (AVFormatContext *s, AVIOContext *pb,
 
         av_reduce(&st->avg_frame_rate.den, &st->avg_frame_rate.num,
                   0x10000, fps, (1 << 30) - 1);
-#if FF_API_R_FRAME_RATE
-        st->r_frame_rate = st->avg_frame_rate;
-#endif
     }
 
 skip:
@@ -678,6 +675,10 @@ static int rm_assemble_video_frame(AVFormatContext *s, AVIOContext *pb,
         *pkt= vst->pkt;
         vst->pkt.data= NULL;
         vst->pkt.size= 0;
+        vst->pkt.buf = NULL;
+#if FF_API_DESTRUCT_PACKET
+        vst->pkt.destruct = NULL;
+#endif
         if(vst->slices != vst->cur_slice) //FIXME find out how to set slices correct from the begin
             memmove(pkt->data + 1 + 8*vst->cur_slice, pkt->data + 1 + 8*vst->slices,
                 vst->videobufpos - 1 - 8*vst->slices);

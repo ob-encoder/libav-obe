@@ -46,27 +46,27 @@ static int config_props(AVFilterLink *inlink)
 
     priv->pix_desc = av_pix_fmt_desc_get(inlink->format);
 
+    av_freep(&priv->line);
     if (!(priv->line = av_malloc(sizeof(*priv->line) * inlink->w)))
         return AVERROR(ENOMEM);
 
     return 0;
 }
 
-static int filter_frame(AVFilterLink *inlink, AVFilterBufferRef *in)
+static int filter_frame(AVFilterLink *inlink, AVFrame *in)
 {
     PixdescTestContext *priv = inlink->dst->priv;
     AVFilterLink *outlink    = inlink->dst->outputs[0];
-    AVFilterBufferRef *out;
+    AVFrame *out;
     int i, c, w = inlink->w, h = inlink->h;
 
-    out = ff_get_video_buffer(outlink, AV_PERM_WRITE,
-                              outlink->w, outlink->h);
+    out = ff_get_video_buffer(outlink, outlink->w, outlink->h);
     if (!out) {
-        avfilter_unref_bufferp(&in);
+        av_frame_free(&in);
         return AVERROR(ENOMEM);
     }
 
-    avfilter_copy_buffer_ref_props(out, in);
+    av_frame_copy_props(out, in);
 
     for (i = 0; i < 4; i++) {
         int h = outlink->h;
@@ -79,8 +79,8 @@ static int filter_frame(AVFilterLink *inlink, AVFilterBufferRef *in)
     }
 
     /* copy palette */
-    if (priv->pix_desc->flags & PIX_FMT_PAL ||
-        priv->pix_desc->flags & PIX_FMT_PSEUDOPAL)
+    if (priv->pix_desc->flags & AV_PIX_FMT_FLAG_PAL ||
+        priv->pix_desc->flags & AV_PIX_FMT_FLAG_PSEUDOPAL)
         memcpy(out->data[1], in->data[1], 256*4);
 
     for (c = 0; c < priv->pix_desc->nb_components; c++) {
@@ -102,7 +102,7 @@ static int filter_frame(AVFilterLink *inlink, AVFilterBufferRef *in)
         }
     }
 
-    avfilter_unref_bufferp(&in);
+    av_frame_free(&in);
     return ff_filter_frame(outlink, out);
 }
 
@@ -112,7 +112,6 @@ static const AVFilterPad avfilter_vf_pixdesctest_inputs[] = {
         .type         = AVMEDIA_TYPE_VIDEO,
         .filter_frame = filter_frame,
         .config_props = config_props,
-        .min_perms    = AV_PERM_READ,
     },
     { NULL }
 };

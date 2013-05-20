@@ -48,8 +48,6 @@
 #include "rtpenc.h"
 #include "mpegts.h"
 
-//#define DEBUG
-
 /* Timeout values for socket poll, in ms,
  * and read_packet(), in seconds  */
 #define POLL_TIMEOUT_MS 100
@@ -1118,11 +1116,11 @@ start:
  *
  * @return zero if success, nonzero otherwise
  */
-static int ff_rtsp_send_cmd_with_content_async(AVFormatContext *s,
-                                               const char *method, const char *url,
-                                               const char *headers,
-                                               const unsigned char *send_content,
-                                               int send_content_length)
+static int rtsp_send_cmd_with_content_async(AVFormatContext *s,
+                                            const char *method, const char *url,
+                                            const char *headers,
+                                            const unsigned char *send_content,
+                                            int send_content_length)
 {
     RTSPState *rt = s->priv_data;
     char buf[4096], *out_buf;
@@ -1175,7 +1173,7 @@ static int ff_rtsp_send_cmd_with_content_async(AVFormatContext *s,
 int ff_rtsp_send_cmd_async(AVFormatContext *s, const char *method,
                            const char *url, const char *headers)
 {
-    return ff_rtsp_send_cmd_with_content_async(s, method, url, headers, NULL, 0);
+    return rtsp_send_cmd_with_content_async(s, method, url, headers, NULL, 0);
 }
 
 int ff_rtsp_send_cmd(AVFormatContext *s, const char *method, const char *url,
@@ -1200,9 +1198,9 @@ int ff_rtsp_send_cmd_with_content(AVFormatContext *s,
 
 retry:
     cur_auth_type = rt->auth_state.auth_type;
-    if ((ret = ff_rtsp_send_cmd_with_content_async(s, method, url, header,
-                                                   send_content,
-                                                   send_content_length)))
+    if ((ret = rtsp_send_cmd_with_content_async(s, method, url, header,
+                                                send_content,
+                                                send_content_length)))
         return ret;
 
     if ((ret = ff_rtsp_read_reply(s, reply, content_ptr, 0, method) ) < 0)
@@ -2032,7 +2030,7 @@ static int sdp_probe(AVProbeData *p1)
     while (p < p_end && *p != '\0') {
         if (p + sizeof("c=IN IP") - 1 < p_end &&
             av_strstart(p, "c=IN IP", NULL))
-            return AVPROBE_SCORE_MAX / 2;
+            return AVPROBE_SCORE_EXTENSION;
 
         while (p < p_end - 1 && *p != '\n') p++;
         if (++p >= p_end)
@@ -2138,7 +2136,7 @@ static int rtp_probe(AVProbeData *p)
 
 static int rtp_read_header(AVFormatContext *s)
 {
-    uint8_t recvbuf[1500];
+    uint8_t recvbuf[RTP_MAX_PACKET_LENGTH];
     char host[500], sdp[500];
     int ret, port;
     URLContext* in = NULL;

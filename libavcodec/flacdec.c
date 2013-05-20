@@ -44,9 +44,6 @@
 #include "flacdata.h"
 #include "flacdsp.h"
 
-#undef NDEBUG
-#include <assert.h>
-
 typedef struct FLACContext {
     FLACSTREAMINFO
 
@@ -129,8 +126,6 @@ static void dump_headers(AVCodecContext *avctx, FLACStreaminfo *s)
 static int allocate_buffers(FLACContext *s)
 {
     int buf_size;
-
-    assert(s->max_blocksize);
 
     buf_size = av_samples_get_buffer_size(NULL, s->channels, s->max_blocksize,
                                           AV_SAMPLE_FMT_S32P, 0);
@@ -371,7 +366,7 @@ static inline int decode_subframe(FLACContext *s, int channel)
         bps -= wasted;
     }
     if (bps > 32) {
-        av_log_missing_feature(s->avctx, "Decorrelated bit depth > 32", 0);
+        avpriv_report_missing_feature(s->avctx, "Decorrelated bit depth > 32");
         return AVERROR_PATCHWELCOME;
     }
 
@@ -529,7 +524,7 @@ static int flac_decode_frame(AVCodecContext *avctx, void *data,
 
     /* get output buffer */
     frame->nb_samples = s->blocksize;
-    if ((ret = ff_get_buffer(avctx, frame)) < 0) {
+    if ((ret = ff_get_buffer(avctx, frame, 0)) < 0) {
         av_log(avctx, AV_LOG_ERROR, "get_buffer() failed\n");
         return ret;
     }

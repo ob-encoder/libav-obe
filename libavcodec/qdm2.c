@@ -39,7 +39,6 @@
 #include "libavutil/channel_layout.h"
 #include "avcodec.h"
 #include "get_bits.h"
-#include "dsputil.h"
 #include "internal.h"
 #include "rdft.h"
 #include "mpegaudiodsp.h"
@@ -1836,6 +1835,10 @@ static av_cold int qdm2_decode_init(AVCodecContext *avctx)
         av_log(avctx, AV_LOG_ERROR, "Unknown FFT order (%d), contact the developers!\n", s->fft_order);
         return -1;
     }
+    if (s->fft_size != (1 << (s->fft_order - 1))) {
+        av_log(avctx, AV_LOG_ERROR, "FFT size %d not power of 2.\n", s->fft_size);
+        return AVERROR_INVALIDDATA;
+    }
 
     ff_rdft_init(&s->rdft_ctx, s->fft_order, IDFT_C2R);
     ff_mpadsp_init(&s->mpadsp);
@@ -1935,7 +1938,7 @@ static int qdm2_decode_frame(AVCodecContext *avctx, void *data,
 
     /* get output buffer */
     frame->nb_samples = 16 * s->frame_size;
-    if ((ret = ff_get_buffer(avctx, frame)) < 0) {
+    if ((ret = ff_get_buffer(avctx, frame, 0)) < 0) {
         av_log(avctx, AV_LOG_ERROR, "get_buffer() failed\n");
         return ret;
     }

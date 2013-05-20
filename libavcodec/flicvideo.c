@@ -42,6 +42,7 @@
 #include "libavutil/intreadwrite.h"
 #include "avcodec.h"
 #include "bytestream.h"
+#include "internal.h"
 #include "mathops.h"
 
 #define FLI_256_COLOR 4
@@ -122,7 +123,7 @@ static av_cold int flic_decode_init(AVCodecContext *avctx)
                   return AVERROR_INVALIDDATA;
     }
 
-    s->frame.data[0] = NULL;
+    avcodec_get_frame_defaults(&s->frame);
     s->new_palette = 0;
 
     return 0;
@@ -167,9 +168,7 @@ static int flic_decode_frame_8BPP(AVCodecContext *avctx,
 
     bytestream2_init(&g2, buf, buf_size);
 
-    s->frame.reference = 1;
-    s->frame.buffer_hints = FF_BUFFER_HINTS_VALID | FF_BUFFER_HINTS_PRESERVE | FF_BUFFER_HINTS_REUSABLE;
-    if ((ret = avctx->reget_buffer(avctx, &s->frame)) < 0) {
+    if ((ret = ff_reget_buffer(avctx, &s->frame)) < 0) {
         av_log(avctx, AV_LOG_ERROR, "reget_buffer() failed\n");
         return ret;
     }
@@ -348,6 +347,11 @@ static int flic_decode_frame_8BPP(AVCodecContext *avctx,
                 pixel_countdown = s->avctx->width;
                 while (pixel_countdown > 0) {
                     byte_run = sign_extend(bytestream2_get_byte(&g2), 8);
+                    if (!byte_run) {
+                        av_log(avctx, AV_LOG_ERROR, "Invalid byte run value.\n");
+                        return AVERROR_INVALIDDATA;
+                    }
+
                     if (byte_run > 0) {
                         palette_idx1 = bytestream2_get_byte(&g2);
                         CHECK_PIXEL_PTR(byte_run);
@@ -419,8 +423,10 @@ static int flic_decode_frame_8BPP(AVCodecContext *avctx,
         s->new_palette = 0;
     }
 
+    if ((ret = av_frame_ref(data, &s->frame)) < 0)
+        return ret;
+
     *got_frame = 1;
-    *(AVFrame*)data = s->frame;
 
     return buf_size;
 }
@@ -458,9 +464,7 @@ static int flic_decode_frame_15_16BPP(AVCodecContext *avctx,
 
     bytestream2_init(&g2, buf, buf_size);
 
-    s->frame.reference = 1;
-    s->frame.buffer_hints = FF_BUFFER_HINTS_VALID | FF_BUFFER_HINTS_PRESERVE | FF_BUFFER_HINTS_REUSABLE;
-    if ((ret = avctx->reget_buffer(avctx, &s->frame)) < 0) {
+    if ((ret = ff_reget_buffer(avctx, &s->frame)) < 0) {
         av_log(avctx, AV_LOG_ERROR, "reget_buffer() failed\n");
         return ret;
     }
@@ -535,7 +539,7 @@ static int flic_decode_frame_15_16BPP(AVCodecContext *avctx,
             break;
 
         case FLI_LC:
-            av_log(avctx, AV_LOG_ERROR, "Unexpected FLI_LC chunk in non-paletised FLC\n");
+            av_log(avctx, AV_LOG_ERROR, "Unexpected FLI_LC chunk in non-palettized FLC\n");
             bytestream2_skip(&g2, chunk_size - 6);
             break;
 
@@ -680,9 +684,10 @@ static int flic_decode_frame_15_16BPP(AVCodecContext *avctx,
         av_log(avctx, AV_LOG_ERROR, "Processed FLI chunk where chunk size = %d " \
                "and final chunk ptr = %d\n", buf_size, bytestream2_tell(&g2));
 
+    if ((ret = av_frame_ref(data, &s->frame)) < 0)
+        return ret;
 
     *got_frame = 1;
-    *(AVFrame*)data = s->frame;
 
     return buf_size;
 }
@@ -728,8 +733,7 @@ static av_cold int flic_decode_end(AVCodecContext *avctx)
 {
     FlicDecodeContext *s = avctx->priv_data;
 
-    if (s->frame.data[0])
-        avctx->release_buffer(avctx, &s->frame);
+    av_frame_unref(&s->frame);
 
     return 0;
 }

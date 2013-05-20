@@ -36,7 +36,6 @@
 #include "libavutil/imgutils.h"
 #include "libavutil/opt.h"
 #include "avcodec.h"
-#include "dsputil.h"
 #include "internal.h"
 #include "mjpeg.h"
 #include "mjpegdec.h"
@@ -90,6 +89,7 @@ av_cold int ff_mjpeg_decode_init(AVCodecContext *avctx)
         s->picture_ptr = &s->picture;
 
     s->avctx = avctx;
+    ff_hpeldsp_init(&s->hdsp, avctx->flags);
     ff_dsputil_init(&s->dsp, avctx);
     ff_init_scantable(s->dsp.idct_permutation, &s->scantable, ff_zigzag_direct);
     s->buffer_size   = 0;
@@ -244,9 +244,9 @@ int ff_mjpeg_decode_sof(MJpegDecodeContext *s)
         nb_components > MAX_COMPONENTS)
         return -1;
     if (s->ls && !(s->bits <= 8 || nb_components == 1)) {
-        av_log_missing_feature(s->avctx,
-                               "For JPEG-LS anything except <= 8 bits/component"
-                               " or 16-bit gray", 0);
+        avpriv_report_missing_feature(s->avctx,
+                                      "JPEG-LS that is not <= 8 "
+                                      "bits/component or 16-bit gray");
         return AVERROR_PATCHWELCOME;
     }
     s->nb_components = nb_components;
@@ -271,7 +271,7 @@ int ff_mjpeg_decode_sof(MJpegDecodeContext *s)
     }
 
     if (s->ls && (s->h_max > 1 || s->v_max > 1)) {
-        av_log_missing_feature(s->avctx, "Subsampling in JPEG-LS", 0);
+        avpriv_report_missing_feature(s->avctx, "Subsampling in JPEG-LS");
         return AVERROR_PATCHWELCOME;
     }
 
@@ -281,8 +281,6 @@ int ff_mjpeg_decode_sof(MJpegDecodeContext *s)
     /* if different size, realloc/alloc picture */
     /* XXX: also check h_count and v_count */
     if (width != s->width || height != s->height) {
-        av_freep(&s->qscale_table);
-
         s->width      = width;
         s->height     = height;
         s->interlaced = 0;
@@ -300,7 +298,6 @@ int ff_mjpeg_decode_sof(MJpegDecodeContext *s)
 
         avcodec_set_dimensions(s->avctx, width, height);
 
-        s->qscale_table  = av_mallocz((s->width + 15) / 16);
         s->first_picture = 0;
     }
 
@@ -351,10 +348,8 @@ int ff_mjpeg_decode_sof(MJpegDecodeContext *s)
             s->avctx->pix_fmt = AV_PIX_FMT_GRAY16;
     }
 
-    if (s->picture_ptr->data[0])
-        s->avctx->release_buffer(s->avctx, s->picture_ptr);
-
-    if (ff_get_buffer(s->avctx, s->picture_ptr) < 0) {
+    av_frame_unref(s->picture_ptr);
+    if (ff_get_buffer(s->avctx, s->picture_ptr, AV_GET_BUFFER_FLAG_REF) < 0) {
         av_log(s->avctx, AV_LOG_ERROR, "get_buffer() failed\n");
         return -1;
     }
@@ -864,7 +859,7 @@ static int mjpeg_decode_scan(MJpegDecodeContext *s, int nb_components, int Ah,
                     ptr = data[c] + block_offset;
                     if (!s->progressive) {
                         if (copy_mb)
-                            s->dsp.put_pixels_tab[1][0](ptr,
+                            s->hdsp.put_pixels_tab[1][0](ptr,
                                 reference_data[c] + block_offset,
                                 linesize[c], 8);
                         else {
@@ -980,9 +975,9 @@ static int mjpeg_decode_scan_progressive_ac(MJpegDecodeContext *s, int ss,
 
             if (last_scan) {
                 if (copy_mb) {
-                    s->dsp.put_pixels_tab[1][0](ptr,
-                                                reference_data + block_offset,
-                                                linesize, 8);
+                    s->hdsp.put_pixels_tab[1][0](ptr,
+                                                 reference_data + block_offset,
+                                                 linesize, 8);
                 } else {
                     s->dsp.idct_put(ptr, linesize, *block);
                     ptr += 8;
@@ -1453,7 +1448,6 @@ int ff_mjpeg_decode_frame(AVCodecContext *avctx, void *data, int *got_frame,
     int unescaped_buf_size;
     int start_code;
     int ret = 0;
-    AVFrame *picture = data;
 
     s->got_picture = 0; // picture from previous image can not be reused
     buf_ptr = buf;
@@ -1490,6 +1484,12 @@ int ff_mjpeg_decode_frame(AVCodecContext *avctx, void *data, int *got_frame,
                 /* Comment */
             else if (start_code == COM)
                 mjpeg_decode_com(s);
+
+            if (!CONFIG_JPEGLS_DECODER &&
+                (start_code == SOF48 || start_code == LSE)) {
+                av_log(avctx, AV_LOG_ERROR, "JPEG-LS support not enabled.\n");
+                return AVERROR(ENOSYS);
+            }
 
             switch (start_code) {
             case SOI:
@@ -1556,21 +1556,16 @@ eoi_parser:
                     if (s->bottom_field == !s->interlace_polarity)
                         goto not_the_end;
                 }
-                *picture   = *s->picture_ptr;
+                if ((ret = av_frame_ref(data, s->picture_ptr)) < 0)
+                    return ret;
                 *got_frame = 1;
 
-                if (!s->lossless) {
-                    picture->quality      = FFMAX3(s->qscale[0],
-                                                   s->qscale[1],
-                                                   s->qscale[2]);
-                    picture->qstride      = 0;
-                    picture->qscale_table = s->qscale_table;
-                    memset(picture->qscale_table, picture->quality,
-                           (s->width + 15) / 16);
-                    if (avctx->debug & FF_DEBUG_QP)
-                        av_log(avctx, AV_LOG_DEBUG,
-                               "QP: %d\n", picture->quality);
-                    picture->quality *= FF_QP2LAMBDA;
+                if (!s->lossless &&
+                    avctx->debug & FF_DEBUG_QP) {
+                    av_log(avctx, AV_LOG_DEBUG,
+                           "QP: %d\n", FFMAX3(s->qscale[0],
+                                              s->qscale[1],
+                                              s->qscale[2]));
                 }
 
                 goto the_end;
@@ -1632,11 +1627,10 @@ av_cold int ff_mjpeg_decode_end(AVCodecContext *avctx)
     MJpegDecodeContext *s = avctx->priv_data;
     int i, j;
 
-    if (s->picture_ptr && s->picture_ptr->data[0])
-        avctx->release_buffer(avctx, s->picture_ptr);
+    if (s->picture_ptr)
+        av_frame_unref(s->picture_ptr);
 
     av_free(s->buffer);
-    av_free(s->qscale_table);
     av_freep(&s->ljpeg_buffer);
     s->ljpeg_buffer_size = 0;
 

@@ -23,7 +23,6 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
-#include <ctype.h>
 
 #include "config.h"
 #include "common.h"
@@ -43,7 +42,7 @@ int av_strstart(const char *str, const char *pfx, const char **ptr)
 
 int av_stristart(const char *str, const char *pfx, const char **ptr)
 {
-    while (*pfx && toupper((unsigned)*pfx) == toupper((unsigned)*str)) {
+    while (*pfx && av_toupper((unsigned)*pfx) == av_toupper((unsigned)*str)) {
         pfx++;
         str++;
     }
@@ -211,6 +210,28 @@ const char *av_dirname(char *path)
     *p = '\0';
 
     return path;
+}
+
+int av_isdigit(int c)
+{
+    return c >= '0' && c <= '9';
+}
+
+int av_isgraph(int c)
+{
+    return c > 32 && c < 127;
+}
+
+int av_isspace(int c)
+{
+    return c == ' ' || c == '\f' || c == '\n' || c == '\r' || c == '\t' ||
+           c == '\v';
+}
+
+int av_isxdigit(int c)
+{
+    c = av_tolower(c);
+    return av_isdigit(c) || (c >= 'a' && c <= 'f');
 }
 
 #ifdef TEST
