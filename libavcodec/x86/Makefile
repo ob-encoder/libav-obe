@@ -42,16 +42,6 @@ MMX-OBJS-$(CONFIG_DSPUTIL)             += x86/dsputil_init.o            \
 
 MMX-OBJS-$(CONFIG_ENCODERS)            += x86/dsputilenc_mmx.o          \
                                           x86/motion_est.o
-MMX-OBJS-$(CONFIG_FFT)                 += x86/fft_init.o
-MMX-OBJS-$(CONFIG_H264DSP)             += x86/h264dsp_init.o
-MMX-OBJS-$(CONFIG_H264PRED)            += x86/h264_intrapred_init.o
-MMX-OBJS-$(CONFIG_LPC)                 += x86/lpc.o
-MMX-OBJS-$(CONFIG_MPEGAUDIODSP)        += x86/mpegaudiodec.o
-MMX-OBJS-$(CONFIG_PNG_DECODER)         += x86/pngdsp_init.o
-MMX-OBJS-$(CONFIG_PRORES_DECODER)      += x86/proresdsp_init.o
-MMX-OBJS-$(CONFIG_RV30_DECODER)        += x86/rv34dsp_init.o
-MMX-OBJS-$(CONFIG_RV40_DECODER)        += x86/rv34dsp_init.o            \
-                                          x86/rv40dsp_init.o
 MMX-OBJS-$(CONFIG_V210_DECODER)        += x86/v210-init.o
 MMX-OBJS-$(CONFIG_HPELDSP)             += x86/fpel_mmx.o                \
                                           x86/hpeldsp_mmx.o             \
